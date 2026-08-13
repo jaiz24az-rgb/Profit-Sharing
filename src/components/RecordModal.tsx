@@ -1,0 +1,306 @@
+import React, { useState, useEffect } from 'react';
+import { BillingRecord, STAGES, StageKey, Airline, Vendor } from '../types';
+import { formatRupiah } from '../utils/export';
+import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink } from 'lucide-react';
+import { generateOfficialIRFNumber } from '../utils/irfHelper';
+
+interface RecordModalProps {
+  record: BillingRecord | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (updatedRecord: BillingRecord) => void;
+  onDelete: (recordId: string) => void;
+  onOpenIRFModal?: (record: BillingRecord) => void;
+}
+
+export const RecordModal: React.FC<RecordModalProps> = ({
+  record,
+  isOpen,
+  onClose,
+  onSave,
+  onDelete,
+  onOpenIRFModal,
+}) => {
+  const [formData, setFormData] = useState<BillingRecord | null>(record);
+
+  useEffect(() => {
+    setFormData(record);
+  }, [record]);
+
+  if (!isOpen || !formData) return null;
+
+  const handleAutoGenerateIRF = () => {
+    if (!formData) return;
+    const officialNo = generateOfficialIRFNumber(formData.airline, 2, 'SUB', new Date());
+    setFormData({ ...formData, noIrf: officialNo });
+  };
+
+  const handleStageChange = (stageKey: StageKey, field: 'completed' | 'emailDate' | 'notes', value: any) => {
+    setFormData(prev => {
+      if (!prev) return null;
+      const currentStage = prev.stages[stageKey] || { completed: false, emailDate: '' };
+      const updatedStage = {
+        ...currentStage,
+        [field]: value,
+        emailDate: field === 'completed' && value && !currentStage.emailDate 
+          ? new Date().toISOString().slice(0, 10) 
+          : (field === 'emailDate' ? value : currentStage.emailDate)
+      };
+
+      const newStages = { ...prev.stages, [stageKey]: updatedStage };
+
+      let overallStatus = prev.overallStatus;
+      if (newStages.laporan_ho.completed) overallStatus = 'Completed HO';
+      else if (newStages.pembayaran.completed) overallStatus = 'Paid';
+      else overallStatus = 'In Progress';
+
+      return {
+        ...prev,
+        stages: newStages,
+        overallStatus,
+        updatedAt: new Date().toISOString().slice(0, 10)
+      };
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData) {
+      onSave(formData);
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+        
+        {/* Modal Header */}
+        <div className="p-4 sm:p-5 bg-slate-800/90 border-b border-slate-700/80 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Detail & Checklist Tahapan Tagihan</h3>
+              <p className="text-xs text-slate-400">ID Berkas: {formData.id}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-6 text-xs text-slate-200">
+          
+          {/* Main Attributes Section */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <div>
+              <label className="block text-slate-400 mb-1">Maskapai Penagih</label>
+              <select
+                value={formData.airline}
+                onChange={(e) => setFormData(prev => prev ? ({ ...prev, airline: e.target.value as Airline }) : null)}
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium focus:border-blue-500"
+              >
+                <option value="PT Sriwijaya Air">PT Sriwijaya Air</option>
+                <option value="PT NAM Air">PT NAM Air</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Instansi / Vendor (Penerima Tagihan)</label>
+              <select
+                value={formData.vendor}
+                onChange={(e) => setFormData(prev => prev ? ({ ...prev, vendor: e.target.value as Vendor }) : null)}
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium focus:border-blue-500"
+              >
+                <option value="PT 21 Express">PT 21 Express</option>
+                <option value="PT Gatrans Mulia Indonesia">PT Gatrans Mulia Indonesia</option>
+                <option value="PT Mitra Kargo Nusantara">PT Mitra Kargo Nusantara</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Data Periode</label>
+              <input
+                type="text"
+                placeholder="Contoh: 01 - 15 Jan 2026"
+                value={formData.periode}
+                onChange={(e) => setFormData(prev => prev ? ({ ...prev, periode: e.target.value }) : null)}
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Nominal Tagihan (Rp)</label>
+              <input
+                type="number"
+                value={formData.nominal}
+                onChange={(e) => setFormData(prev => prev ? ({ ...prev, nominal: Number(e.target.value) }) : null)}
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">No. Invoice</label>
+              <input
+                type="text"
+                value={formData.noInvoice || ''}
+                onChange={(e) => setFormData(prev => prev ? ({ ...prev, noInvoice: e.target.value }) : null)}
+                placeholder="INV/SJ/2026/01/xxx"
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-400">No. IRF (Format Resmi)</label>
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateIRF}
+                  className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" /> Auto Format
+                </button>
+              </div>
+              <input
+                type="text"
+                value={formData.noIrf || ''}
+                onChange={(e) => setFormData(prev => prev ? ({ ...prev, noIrf: e.target.value }) : null)}
+                placeholder="002/SJ-CRG/SUB/VII/2026"
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* IRF Quick Launcher Banner */}
+          <div className="bg-blue-950/50 border border-blue-800/60 p-3 rounded-xl flex items-center justify-between">
+            <div>
+              <p className="font-bold text-white text-xs flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span>Dokumen Formulir Invoicing Request Form (IRF)</span>
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Cetak atau edit rincian IRF resmi untuk diajukan ke HO
+              </p>
+            </div>
+            {onOpenIRFModal && (
+              <button
+                type="button"
+                onClick={() => onOpenIRFModal(formData)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow"
+              >
+                <span>Buka Form IRF</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* 8 Stages Checklist Checklist Steps */}
+          <div>
+            <h4 className="font-bold text-white mb-3 text-sm flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Daftar 8 Tahapan Checklist Penagihan</span>
+            </h4>
+
+            <div className="space-y-3">
+              {STAGES.map((stage) => {
+                const st = formData.stages[stage.key] || { completed: false, emailDate: '' };
+                return (
+                  <div 
+                    key={stage.key}
+                    className={`p-3 rounded-xl border transition ${
+                      st.completed 
+                        ? 'bg-slate-950 border-emerald-500/30' 
+                        : 'bg-slate-950 border-slate-800'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      
+                      {/* Checkbox & Stage Name */}
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={st.completed}
+                          onChange={(e) => handleStageChange(stage.key, 'completed', e.target.checked)}
+                          className="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-500 accent-emerald-500 cursor-pointer"
+                        />
+                        <div>
+                          <span className="font-semibold text-white text-xs">
+                            {stage.order}. {stage.label}
+                          </span>
+                          <p className="text-[10px] text-slate-400">{stage.description}</p>
+                        </div>
+                      </label>
+
+                      {/* Date Picker for Stage Email Date */}
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] text-slate-400">Tgl Email/Proses:</span>
+                        <input
+                          type="date"
+                          value={st.emailDate || ''}
+                          onChange={(e) => handleStageChange(stage.key, 'emailDate', e.target.value)}
+                          className="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-[11px] text-white font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stage Note */}
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        placeholder="Catatan khusus tahap ini (opsional)..."
+                        value={st.notes || ''}
+                        onChange={(e) => handleStageChange(stage.key, 'notes', e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-slate-900/60 border border-slate-800 rounded text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Footer Action Bar */}
+          <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('Apakah Anda yakin ingin menghapus data tagihan ini?')) {
+                  onDelete(formData.id);
+                  onClose();
+                }
+              }}
+              className="px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium flex items-center space-x-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Hapus Berkas</span>
+            </button>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center space-x-1.5 transition shadow-lg cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Simpan Perubahan</span>
+              </button>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  );
+};

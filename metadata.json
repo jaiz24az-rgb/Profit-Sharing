@@ -1,0 +1,6 @@
+{
+  "name": "Checklist Management Penagihan",
+  "description": "Sistem Monitoring & Checklist Penagihan Sriwijaya Air & NAM Air kepada 21 Express, Gatrans, dan MKN.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
