@@ -35,6 +35,7 @@ import { NewRecordModal } from './components/NewRecordModal';
 import { HOReportModal } from './components/HOReportModal';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { IRFDocumentModal } from './components/IRFDocumentModal';
+import { SplitPaymentModal } from './components/SplitPaymentModal';
 
 export default function App() {
   const [records, setRecords] = useState<BillingRecord[]>([]);
@@ -51,9 +52,18 @@ export default function App() {
   const [irfRecord, setIrfRecord] = useState<BillingRecord | null>(null);
   const [isIRFModalOpen, setIsIRFModalOpen] = useState(false);
 
+  // Split Payment Modal state
+  const [splitRecord, setSplitRecord] = useState<BillingRecord | null>(null);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+
   const handleOpenIRFModal = (rec: BillingRecord) => {
     setIrfRecord(rec);
     setIsIRFModalOpen(true);
+  };
+
+  const handleOpenSplitModal = (rec: BillingRecord) => {
+    setSplitRecord(rec);
+    setIsSplitModalOpen(true);
   };
 
   // Filter State
@@ -248,10 +258,15 @@ export default function App() {
             records={filteredRecords}
             onToggleStage={handleToggleStage}
             onSelectRecord={(rec) => {
-              setSelectedRecord(rec);
-              setIsRecordModalOpen(true);
+              if (rec.category === 'OPERASIONAL') {
+                handleOpenSplitModal(rec);
+              } else {
+                setSelectedRecord(rec);
+                setIsRecordModalOpen(true);
+              }
             }}
             onOpenIRFModal={handleOpenIRFModal}
+            onOpenSplitModal={handleOpenSplitModal}
           />
         )}
 
@@ -260,10 +275,15 @@ export default function App() {
             records={filteredRecords}
             onToggleStage={handleToggleStage}
             onSelectRecord={(rec) => {
-              setSelectedRecord(rec);
-              setIsRecordModalOpen(true);
+              if (rec.category === 'OPERASIONAL') {
+                handleOpenSplitModal(rec);
+              } else {
+                setSelectedRecord(rec);
+                setIsRecordModalOpen(true);
+              }
             }}
             onOpenIRFModal={handleOpenIRFModal}
+            onOpenSplitModal={handleOpenSplitModal}
           />
         )}
 
@@ -285,6 +305,21 @@ export default function App() {
         onDelete={handleDeleteRecord}
         onOpenIRFModal={handleOpenIRFModal}
       />
+
+      {splitRecord && (
+        <SplitPaymentModal
+          record={splitRecord}
+          isOpen={isSplitModalOpen}
+          onClose={() => {
+            setIsSplitModalOpen(false);
+            setSplitRecord(null);
+          }}
+          onSaveRecord={(updated) => {
+            handleSaveRecord(updated);
+            setSplitRecord(updated);
+          }}
+        />
+      )}
 
       {irfRecord && (
         <IRFDocumentModal

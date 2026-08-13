@@ -168,6 +168,7 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     }
   },
   {
+    category: 'CARGO',
     id: 'REC-2026-006',
     airline: 'PT NAM Air',
     vendor: 'PT Gatrans Mulia Indonesia',
@@ -188,6 +189,170 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
       email_vendor: { completed: false, emailDate: '', notes: '' },
       pembayaran: { completed: false, emailDate: '', notes: '' },
       laporan_ho: { completed: false, emailDate: '', notes: '' }
+    }
+  },
+  /* OPERATIONAL VENDORS INITIAL RECORDS */
+  {
+    category: 'OPERASIONAL',
+    id: 'REC-OP-2026-001',
+    airline: 'PT Sriwijaya Air',
+    vendor: 'PT Angkasa Pura Indonesia',
+    periode: 'Juli 2026',
+    noInvoice: 'INV/API-SUB/2026/07/088',
+    noIom: 'IOM/SJ-SUB/2026/07/012',
+    noApgnr: 'APGNR/HO/2026/08/045',
+    nominal: 450000000,
+    createdAt: '2026-07-28',
+    updatedAt: '2026-08-10',
+    overallStatus: 'Terbayar Parsial',
+    catatanUtama: 'Tagihan airport services & landing fee. Pembayaran di-split 3 termin dari HO.',
+    stages: {
+      iom: { completed: true, emailDate: '2026-07-28', notes: 'IOM No. IOM/SJ-SUB/2026/07/012 diajukan ke HO' },
+      email_ho: { completed: true, emailDate: '2026-07-30', notes: 'Email IOM & lampiran invoice terkirim ke Keuangan HO' },
+      apgnr: { completed: true, emailDate: '2026-08-02', notes: 'APGNR terbit No. APGNR/HO/2026/08/045' },
+      pembayaran_split: { completed: false, emailDate: '2026-08-10', notes: 'Terbayar Rp 300.000.000 / Rp 450.000.000 (2 Termin Lunas)' }
+    },
+    operationalDetail: {
+      noIom: 'IOM/SJ-SUB/2026/07/012',
+      iomDate: '2026-07-28',
+      iomCompleted: true,
+      emailHoDate: '2026-07-30',
+      emailHoCompleted: true,
+      noApgnr: 'APGNR/HO/2026/08/045',
+      apgnrDate: '2026-08-02',
+      apgnrCompleted: true,
+      installments: [
+        {
+          id: 'TRM-01',
+          terminName: 'Termin 1 (DP 40%)',
+          paymentDate: '2026-08-05',
+          amount: 180000000,
+          status: 'Lunas',
+          transferRef: 'TRF-MANDIRI-8812',
+          keterangan: 'Pencairan HO Tahap 1'
+        },
+        {
+          id: 'TRM-02',
+          terminName: 'Termin 2 (Cicilan 30%)',
+          paymentDate: '2026-08-10',
+          amount: 120000000,
+          status: 'Lunas',
+          transferRef: 'TRF-BNI-9921',
+          keterangan: 'Pencairan HO Tahap 2'
+        },
+        {
+          id: 'TRM-03',
+          terminName: 'Termin 3 (Pelunasan 30%)',
+          paymentDate: '2026-08-20',
+          amount: 150000000,
+          status: 'Scheduled',
+          keterangan: 'Jadwal cair HO pertengahan bulan'
+        }
+      ]
+    }
+  },
+  {
+    category: 'OPERASIONAL',
+    id: 'REC-OP-2026-002',
+    airline: 'PT NAM Air',
+    vendor: 'Halogen Hotel',
+    periode: 'Juli 2026',
+    noInvoice: 'INV/HLG-SUB/2026/07/041',
+    noIom: 'IOM/IN-SUB/2026/07/019',
+    noApgnr: 'APGNR/HO/2026/08/052',
+    nominal: 85000000,
+    createdAt: '2026-08-01',
+    updatedAt: '2026-08-11',
+    overallStatus: 'Terbayar Parsial',
+    catatanUtama: 'Tagihan akomodasi hotel crew NAM Air Juanda. Split 2 termin.',
+    stages: {
+      iom: { completed: true, emailDate: '2026-08-01', notes: 'IOM disetujui Branch Manager' },
+      email_ho: { completed: true, emailDate: '2026-08-03', notes: 'Email berkas tagihan ke Keuangan HO' },
+      apgnr: { completed: true, emailDate: '2026-08-05', notes: 'No. APGNR terbit dari HO' },
+      pembayaran_split: { completed: false, emailDate: '2026-08-11', notes: 'Terbayar Rp 50.000.000 / Rp 85.000.000' }
+    },
+    operationalDetail: {
+      noIom: 'IOM/IN-SUB/2026/07/019',
+      iomDate: '2026-08-01',
+      iomCompleted: true,
+      emailHoDate: '2026-08-03',
+      emailHoCompleted: true,
+      noApgnr: 'APGNR/HO/2026/08/052',
+      apgnrDate: '2026-08-05',
+      apgnrCompleted: true,
+      installments: [
+        {
+          id: 'TRM-HLG-01',
+          terminName: 'Termin 1 (DP)',
+          paymentDate: '2026-08-11',
+          amount: 50000000,
+          status: 'Lunas',
+          transferRef: 'TRF-BCA-7712',
+          keterangan: 'Transfer Mandiri HO'
+        },
+        {
+          id: 'TRM-HLG-02',
+          terminName: 'Termin 2 (Pelunasan)',
+          paymentDate: '2026-08-22',
+          amount: 35000000,
+          status: 'Pending',
+          keterangan: 'Menunggu approval VP Finance'
+        }
+      ]
+    }
+  },
+  {
+    category: 'OPERASIONAL',
+    id: 'REC-OP-2026-003',
+    airline: 'PT Sriwijaya Air',
+    vendor: 'PT Parewa Asian Catering',
+    periode: 'Juli 2026',
+    noInvoice: 'INV/PAC-SUB/2026/07/102',
+    noIom: 'IOM/SJ-SUB/2026/08/002',
+    nominal: 120000000,
+    createdAt: '2026-08-05',
+    updatedAt: '2026-08-08',
+    overallStatus: 'In Progress',
+    catatanUtama: 'Tagihan inflight meals catering penerbangan Sriwijaya Air.',
+    stages: {
+      iom: { completed: true, emailDate: '2026-08-05', notes: 'IOM terbit' },
+      email_ho: { completed: true, emailDate: '2026-08-08', notes: 'Terkirim ke Email HO' },
+      apgnr: { completed: false, emailDate: '', notes: 'Proses APGNR di HO' },
+      pembayaran_split: { completed: false, emailDate: '', notes: '' }
+    },
+    operationalDetail: {
+      noIom: 'IOM/SJ-SUB/2026/08/002',
+      iomDate: '2026-08-05',
+      iomCompleted: true,
+      emailHoDate: '2026-08-08',
+      emailHoCompleted: true,
+      installments: []
+    }
+  },
+  {
+    category: 'OPERASIONAL',
+    id: 'REC-OP-2026-004',
+    airline: 'PT NAM Air',
+    vendor: 'Cordia Hotel',
+    periode: 'Agustus 2026',
+    noInvoice: 'INV/CRD-SUB/2026/08/005',
+    noIom: 'IOM/IN-SUB/2026/08/006',
+    nominal: 42000000,
+    createdAt: '2026-08-10',
+    updatedAt: '2026-08-10',
+    overallStatus: 'In Progress',
+    catatanUtama: 'Akomodasi transit crew overnight Cordia Hotel Bandara Juanda.',
+    stages: {
+      iom: { completed: true, emailDate: '2026-08-10', notes: 'IOM diajukan' },
+      email_ho: { completed: false, emailDate: '', notes: '' },
+      apgnr: { completed: false, emailDate: '', notes: '' },
+      pembayaran_split: { completed: false, emailDate: '', notes: '' }
+    },
+    operationalDetail: {
+      noIom: 'IOM/IN-SUB/2026/08/006',
+      iomDate: '2026-08-10',
+      iomCompleted: true,
+      installments: []
     }
   }
 ];

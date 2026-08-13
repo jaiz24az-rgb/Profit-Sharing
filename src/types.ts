@@ -5,10 +5,31 @@
 
 export type Airline = 'PT Sriwijaya Air' | 'PT NAM Air';
 
-export type Vendor = 
+export type BillingCategory = 'CARGO' | 'OPERASIONAL';
+
+export type CargoVendor = 
   | 'PT 21 Express' 
   | 'PT Gatrans Mulia Indonesia' 
   | 'PT Mitra Kargo Nusantara';
+
+export type OperationalVendorPreset =
+  | 'PT Angkasa Pura Indonesia'
+  | 'Halogen Hotel'
+  | 'PT Parewa Asian Catering'
+  | 'Cordia Hotel'
+  | 'PT Gapura Angkasa'
+  | 'PT Pertamina Patra Niaga';
+
+export type Vendor = string;
+
+export const DEFAULT_OPERATIONAL_VENDORS: string[] = [
+  'PT Angkasa Pura Indonesia',
+  'Halogen Hotel',
+  'PT Parewa Asian Catering',
+  'Cordia Hotel',
+  'PT Gapura Angkasa',
+  'PT Pertamina Patra Niaga',
+];
 
 export type StageKey = 
   | 'penerimaan_data'
@@ -18,7 +39,11 @@ export type StageKey =
   | 'faktur'
   | 'email_vendor'
   | 'pembayaran'
-  | 'laporan_ho';
+  | 'laporan_ho'
+  | 'iom'
+  | 'email_ho'
+  | 'apgnr'
+  | 'pembayaran_split';
 
 export interface StageInfo {
   key: StageKey;
@@ -38,6 +63,41 @@ export const STAGES: StageInfo[] = [
   { key: 'pembayaran', label: 'Pembayaran Vendor', shortLabel: 'Pembayaran', description: 'Konfirmasi pembayaran & penerimaan dana dari Vendor', order: 7 },
   { key: 'laporan_ho', label: 'Laporan Ke HO', shortLabel: 'Laporan HO', description: 'Pelaporan resmi pembayaran & closing ke Head Office', order: 8 },
 ];
+
+export const OPERATIONAL_STAGES: StageInfo[] = [
+  { key: 'iom', label: 'IOM (Internal Office Memo)', shortLabel: 'IOM', description: 'Internal Office Memorandum diajukan ke HO', order: 1 },
+  { key: 'email_ho', label: 'Email Ke HO', shortLabel: 'Email HO', description: 'Pengiriman berkas IOM & Tagihan ke Keuangan HO', order: 2 },
+  { key: 'apgnr', label: 'APGNR (AP Goods/Non-Refundable)', shortLabel: 'APGNR', description: 'Dokumen / No. APGNR terbit dari Keuangan HO', order: 3 },
+  { key: 'pembayaran_split', label: 'Pembayaran Split (Termin HO)', shortLabel: 'Pembayaran HO', description: 'Realisasi pencairan pembayaran bertahap/termin dari HO', order: 4 },
+];
+
+export interface PaymentInstallment {
+  id: string;
+  terminName: string; // e.g. "Termin 1 (DP 50%)", "Termin 2", "Pelunasan"
+  paymentDate: string; // YYYY-MM-DD
+  amount: number; // IDR
+  status: 'Lunas' | 'Scheduled' | 'Pending';
+  keterangan?: string;
+  transferRef?: string;
+}
+
+export interface OperationalDetail {
+  noIom?: string; // Internal Office Memorandum
+  iomDate?: string;
+  iomCompleted?: boolean;
+  iomNotes?: string;
+
+  emailHoDate?: string;
+  emailHoCompleted?: boolean;
+  emailHoNotes?: string;
+
+  noApgnr?: string; // AP Goods/Service Non-Refundable
+  apgnrDate?: string;
+  apgnrCompleted?: boolean;
+  apgnrNotes?: string;
+
+  installments: PaymentInstallment[]; // Split payments from HO
+}
 
 export interface IRFItem {
   no: number;
@@ -75,25 +135,31 @@ export interface ChecklistStageItem {
 
 export interface BillingRecord {
   id: string;
+  category?: BillingCategory; // 'CARGO' or 'OPERASIONAL', default 'CARGO'
   airline: Airline;
   vendor: Vendor;
-  periode: string; // e.g. "01 - 15 Jan 2026"
+  periode: string; // e.g. "01 - 15 Jan 2026" or "Agustus 2026"
   noInvoice?: string;
   noIrf?: string;
+  noIom?: string; // For Operational
+  noApgnr?: string; // For Operational
   nominal: number; // in IDR
   createdAt: string;
   updatedAt: string;
-  stages: Record<StageKey, ChecklistStageItem>;
-  overallStatus: 'Draft' | 'In Progress' | 'Paid' | 'Completed HO' | 'Overdue';
+  stages: Record<string, ChecklistStageItem>;
+  overallStatus: 'Draft' | 'In Progress' | 'Paid' | 'Completed HO' | 'Overdue' | 'Terbayar Parsial';
   catatanUtama?: string;
   irfDetail?: IRFData;
+  operationalDetail?: OperationalDetail;
 }
 
 export interface FilterState {
   search: string;
+  category: BillingCategory | 'ALL';
   airline: Airline | 'ALL';
   vendor: Vendor | 'ALL';
   status: string;
   period: string;
   completionStatus: 'ALL' | 'PENDING' | 'COMPLETED';
 }
+

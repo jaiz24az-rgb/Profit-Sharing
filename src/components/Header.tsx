@@ -11,9 +11,11 @@ import {
   BarChart3,
   Layers,
   Building2,
-  Plane
+  Plane,
+  Receipt,
+  Boxes
 } from 'lucide-react';
-import { FilterState, Airline, Vendor } from '../types';
+import { FilterState, Airline, Vendor, BillingCategory, DEFAULT_OPERATIONAL_VENDORS } from '../types';
 
 interface HeaderProps {
   viewMode: 'matrix' | 'kanban' | 'analytics';
@@ -52,9 +54,9 @@ export const Header: React.FC<HeaderProps> = ({
               <Plane className="w-6 h-6 text-white" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
-                  Management Penagihan Cargo
+                  Management Penagihan & Checklist
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                   Sriwijaya Air & NAM Air
@@ -65,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Monitoring Checklist Penagihan 3 Instansi (21 Express, Gatrans, MKN) Hingga Laporan HO
+                Monitoring Penagihan Cargo & Vendor Operasional (Angkasa Pura, Hotel, Catering, Dll)
               </p>
             </div>
           </div>
@@ -119,8 +121,54 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
+        {/* Category Switcher Row */}
+        <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between gap-3 overflow-x-auto pb-1">
+          <div className="flex items-center space-x-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 text-xs shrink-0">
+            <span className="text-slate-400 font-semibold px-2 text-[11px] uppercase tracking-wider hidden sm:inline-block">Kategori Tagihan:</span>
+            
+            {/* Cargo Button */}
+            <button
+              onClick={() => setFilters(prev => ({ ...prev, category: 'CARGO', vendor: 'ALL' }))}
+              className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer ${
+                filters.category === 'CARGO'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+              }`}
+            >
+              <Boxes className="w-4 h-4" />
+              <span>Management Penagihan Cargo</span>
+            </button>
+
+            {/* Operational Vendor Button */}
+            <button
+              onClick={() => setFilters(prev => ({ ...prev, category: 'OPERASIONAL', vendor: 'ALL' }))}
+              className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer ${
+                filters.category === 'OPERASIONAL'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-amber-300" />
+              <span>Tagihan Vendor Operasional (Angkasa Pura, Hotel, Catering)</span>
+            </button>
+
+            {/* All Category Button */}
+            <button
+              onClick={() => setFilters(prev => ({ ...prev, category: 'ALL', vendor: 'ALL' }))}
+              className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer ${
+                filters.category === 'ALL'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Semua Tagihan ({totalRecordsCount})</span>
+            </button>
+          </div>
+        </div>
+
         {/* Filter Bar & View Toggle */}
-        <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="mt-3 pt-3 border-t border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           
           {/* View Mode Tabs */}
           <div className="flex items-center space-x-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 text-xs font-medium">
@@ -171,7 +219,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari Invoice, Periode..."
+                placeholder="Cari Vendor, Invoice, IOM..."
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
                 className="w-full pl-8 pr-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 text-xs"
@@ -196,9 +244,18 @@ export const Header: React.FC<HeaderProps> = ({
               className="px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-blue-500 text-xs cursor-pointer"
             >
               <option value="ALL">🏢 Semua Vendor / Instansi</option>
-              <option value="PT 21 Express">PT 21 Express</option>
-              <option value="PT Gatrans Mulia Indonesia">PT Gatrans Mulia Indonesia</option>
-              <option value="PT Mitra Kargo Nusantara">PT Mitra Kargo Nusantara</option>
+              {filters.category !== 'OPERASIONAL' && (
+                <>
+                  <option value="PT 21 Express">PT 21 Express</option>
+                  <option value="PT Gatrans Mulia Indonesia">PT Gatrans Mulia Indonesia</option>
+                  <option value="PT Mitra Kargo Nusantara">PT Mitra Kargo Nusantara</option>
+                </>
+              )}
+              {filters.category !== 'CARGO' && (
+                DEFAULT_OPERATIONAL_VENDORS.map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))
+              )}
             </select>
 
             {/* Completion Status */}
@@ -208,8 +265,8 @@ export const Header: React.FC<HeaderProps> = ({
               className="px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-blue-500 text-xs cursor-pointer"
             >
               <option value="ALL">📋 Semua Progress</option>
-              <option value="PENDING">⏳ Masih Dalam Proses</option>
-              <option value="COMPLETED">✅ Selesai Laporan HO</option>
+              <option value="PENDING">⏳ Masih Dalam Proses / Split</option>
+              <option value="COMPLETED">✅ Selesai Lunas HO</option>
             </select>
           </div>
 
@@ -218,3 +275,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

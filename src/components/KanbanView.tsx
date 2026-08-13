@@ -1,13 +1,14 @@
 import React from 'react';
-import { BillingRecord, STAGES, StageKey } from '../types';
+import { BillingRecord, STAGES, OPERATIONAL_STAGES, StageKey } from '../types';
 import { formatRupiah } from '../utils/export';
-import { CheckCircle2, Clock, FileText, ChevronRight, Edit3, Send } from 'lucide-react';
+import { CheckCircle2, Clock, FileText, ChevronRight, Edit3, Send, DollarSign } from 'lucide-react';
 
 interface KanbanViewProps {
   records: BillingRecord[];
   onToggleStage: (recordId: string, stageKey: StageKey, completed: boolean) => void;
   onSelectRecord: (record: BillingRecord) => void;
   onOpenIRFModal?: (record: BillingRecord) => void;
+  onOpenSplitModal?: (record: BillingRecord) => void;
 }
 
 export const KanbanView: React.FC<KanbanViewProps> = ({
@@ -15,15 +16,16 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
   onToggleStage,
   onSelectRecord,
   onOpenIRFModal,
+  onOpenSplitModal,
 }) => {
   return (
     <div className="space-y-6 mb-8">
       {/* Pipeline Header Notice */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-white">Pipeline Tahapan Penagihan (8 Stage Tracking)</h3>
+          <h3 className="text-sm font-semibold text-white">Pipeline Tahapan Penagihan (Kartu Monitoring Progress)</h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Setiap kartu mewakili berkas tagihan dari Maskapai ke Vendor. Klik lingkaran tahap untuk menyelesaikan secara berurutan.
+            Setiap kartu mewakili berkas tagihan dari Maskapai ke Vendor. Klik lingkaran atau kotak tahap untuk menyelesaikan checklist.
           </p>
         </div>
       </div>
@@ -31,8 +33,12 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
       {/* Grid of Records as Cards with Stage Steps */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {records.map((rec) => {
-          const completedCount = STAGES.filter((s) => rec.stages[s.key]?.completed).length;
-          const progressPercent = Math.round((completedCount / 8) * 100);
+          const isOp = rec.category === 'OPERASIONAL';
+          const activeStages = isOp ? OPERATIONAL_STAGES : STAGES;
+          const totalStagesCount = activeStages.length;
+
+          const completedCount = activeStages.filter((s) => rec.stages[s.key]?.completed).length;
+          const progressPercent = Math.round((completedCount / totalStagesCount) * 100);
 
           return (
             <div
@@ -43,19 +49,26 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold mb-1 ${
-                      rec.airline === 'PT Sriwijaya Air'
-                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                        : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                    }`}>
-                      {rec.airline}
-                    </span>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        rec.airline === 'PT Sriwijaya Air'
+                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                      }`}>
+                        {rec.airline}
+                      </span>
+                      {isOp && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          OPERASIONAL
+                        </span>
+                      )}
+                    </div>
                     <h4 className="text-sm font-bold text-white tracking-tight">
                       {rec.vendor}
                     </h4>
                   </div>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                    rec.overallStatus === 'Completed HO'
+                    rec.overallStatus === 'Completed HO' || rec.overallStatus === 'Lunas Split'
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       : rec.overallStatus === 'Paid'
                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
@@ -75,6 +88,12 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
                     <span className="text-slate-500">Nominal:</span>
                     <span className="font-bold text-emerald-400">{formatRupiah(rec.nominal)}</span>
                   </div>
+                  {rec.noIom && (
+                    <div className="flex justify-between text-slate-300">
+                      <span className="text-slate-500">No. IOM:</span>
+                      <span className="font-mono text-[11px] text-amber-300">{rec.noIom}</span>
+                    </div>
+                  )}
                   {rec.noInvoice && (
                     <div className="flex justify-between text-slate-300">
                       <span className="text-slate-500">No. Invoice:</span>
@@ -87,12 +106,12 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
                 <div className="mt-3">
                   <div className="flex justify-between text-[11px] text-slate-400 mb-1">
                     <span>Progress Checklist</span>
-                    <span className="font-bold text-white">{completedCount}/8 Tahap ({progressPercent}%)</span>
+                    <span className="font-bold text-white">{completedCount}/{totalStagesCount} Tahap ({progressPercent}%)</span>
                   </div>
                   <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        completedCount === 8 ? 'bg-emerald-500' : 'bg-blue-500'
+                        completedCount === totalStagesCount ? 'bg-emerald-500' : 'bg-blue-500'
                       }`}
                       style={{ width: `${progressPercent}%` }}
                     ></div>
@@ -101,8 +120,33 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
 
                 {/* Stage Steps List */}
                 <div className="mt-4 space-y-1.5 border-t border-slate-800/80 pt-3">
-                  {STAGES.map((stage) => {
+                  {activeStages.map((stage) => {
                     const st = rec.stages[stage.key] || { completed: false, emailDate: '' };
+                    
+                    if (stage.key === 'pembayaran_split') {
+                      const installments = rec.operationalDetail?.installments || [];
+                      const paid = installments.filter(i => i.status === 'Lunas').reduce((s,i) => s + i.amount, 0);
+
+                      return (
+                        <div
+                          key={stage.key}
+                          onClick={() => onOpenSplitModal?.(rec)}
+                          className="p-2 rounded-lg text-xs flex items-center justify-between cursor-pointer border bg-amber-950/20 border-amber-800/50 hover:bg-amber-900/30 text-amber-200 transition"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className="w-4 h-4 rounded-full bg-amber-600 text-slate-950 text-[9px] font-bold flex items-center justify-center">
+                              {stage.order}
+                            </span>
+                            <span className="font-semibold text-[11px]">{stage.label}</span>
+                          </div>
+                          <div className="flex items-center space-x-1 font-mono text-[10px] text-amber-300">
+                            <DollarSign className="w-3 h-3 text-emerald-400" />
+                            <span>{paid >= rec.nominal ? 'LUNAS' : `${installments.length} Termin`}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={stage.key}
@@ -141,15 +185,26 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
 
               {/* Card Footer Button */}
               <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
-                {onOpenIRFModal && rec.noIrf && (
+                {isOp ? (
                   <button
-                    onClick={() => onOpenIRFModal(rec)}
-                    className="py-1.5 px-2.5 rounded-lg bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800/60 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
-                    title="Buka / Cetak Form IRF Resmi"
+                    onClick={() => onOpenSplitModal?.(rec)}
+                    className="py-1.5 px-2.5 rounded-lg bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800/60 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                    title="Kelola Split Pembayaran HO"
                   >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>Form IRF</span>
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Split HO</span>
                   </button>
+                ) : (
+                  onOpenIRFModal && rec.noIrf && (
+                    <button
+                      onClick={() => onOpenIRFModal(rec)}
+                      className="py-1.5 px-2.5 rounded-lg bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800/60 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                      title="Buka / Cetak Form IRF Resmi"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Form IRF</span>
+                    </button>
+                  )
                 )}
                 <button
                   onClick={() => onSelectRecord(rec)}
@@ -166,3 +221,4 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
     </div>
   );
 };
+
