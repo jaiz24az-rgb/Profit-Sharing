@@ -35,15 +35,16 @@ export function resetToInitialRecords(): BillingRecord[] {
   return INITIAL_BILLING_RECORDS;
 }
 
-export function updateRecordStage(
+export function createUpdatedRecordStage(
+  records: BillingRecord[],
   recordId: string,
   stageKey: StageKey,
   completed: boolean,
   emailDate?: string,
   notes?: string
-): BillingRecord[] {
-  const records = getStoredRecords();
-  const updated = records.map((rec) => {
+): { updatedRecords: BillingRecord[]; updatedRecord: BillingRecord | null } {
+  let updatedRecord: BillingRecord | null = null;
+  const updatedRecords = records.map((rec) => {
     if (rec.id === recordId) {
       const currentStage = rec.stages[stageKey] || { completed: false, emailDate: '' };
       const newStage = {
@@ -69,16 +70,29 @@ export function updateRecordStage(
         overallStatus = 'In Progress';
       }
 
-      return {
+      updatedRecord = {
         ...rec,
         stages: newStages,
         overallStatus,
         updatedAt: new Date().toISOString().slice(0, 10),
       };
+      return updatedRecord;
     }
     return rec;
   });
 
-  saveRecords(updated);
-  return updated;
+  saveRecords(updatedRecords);
+  return { updatedRecords, updatedRecord };
+}
+
+export function updateRecordStage(
+  recordId: string,
+  stageKey: StageKey,
+  completed: boolean,
+  emailDate?: string,
+  notes?: string
+): BillingRecord[] {
+  const records = getStoredRecords();
+  const { updatedRecords } = createUpdatedRecordStage(records, recordId, stageKey, completed, emailDate, notes);
+  return updatedRecords;
 }

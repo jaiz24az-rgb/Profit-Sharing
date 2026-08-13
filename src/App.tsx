@@ -14,9 +14,15 @@ import {
 import { 
   getStoredRecords, 
   saveRecords, 
-  updateRecordStage, 
+  createUpdatedRecordStage, 
   resetToInitialRecords 
 } from './utils/storage';
+import { 
+  subscribeToBillingRecords, 
+  saveBillingRecord, 
+  removeBillingRecord, 
+  saveBatchBillingRecords 
+} from './utils/firebaseService';
 import { exportToExcel } from './utils/export';
 import { Header } from './components/Header';
 import { StatsCards } from './components/StatsCards';
@@ -59,10 +65,19 @@ export default function App() {
     completionStatus: 'ALL',
   });
 
-  // Load records on mount
+  // Subscribe to Firebase Firestore real-time updates
   useEffect(() => {
-    const loaded = getStoredRecords();
-    setRecords(loaded);
+    const unsubscribe = subscribeToBillingRecords(
+      (firestoreRecords) => {
+        setRecords(firestoreRecords);
+        saveRecords(firestoreRecords); // cache in localStorage
+      },
+      (err) => {
+        console.warn('Firebase connection fallback to localStorage:', err);
+        setRecords(getStoredRecords());
+      }
+    );
+    return () => unsubscribe();
   }, []);
 
   // Handler for stage toggle directly from matrix or kanban
@@ -72,12 +87,22 @@ export default function App() {
     completed: boolean, 
     emailDate?: string
   ) => {
-    const updated = updateRecordStage(recordId, stageKey, completed, emailDate);
-    setRecords(updated);
+    const { updatedRecords, updatedRecord } = createUpdatedRecordStage(
+      records, 
+      recordId, 
+      stageKey, 
+      completed, 
+      emailDate
+    );
+    setRecords(updatedRecords);
+
+    if (updatedRecord) {
+      saveBillingRecord(updatedRecord).catch(err => console.error('Failed to sync stage toggle to Firebase:', err));
+    }
     
     // Update selected record state if modal is active
     if (selectedRecord && selectedRecord.id === recordId) {
-      const current = updated.find(r => r.id === recordId);
+      const current = updatedRecords.find(r => r.id === recordId);
       if (current) setSelectedRecord(current);
     }
   };
@@ -87,6 +112,7 @@ export default function App() {
     const nextRecords = records.map(r => r.id === updatedRecord.id ? updatedRecord : r);
     setRecords(nextRecords);
     saveRecords(nextRecords);
+    saveBillingRecord(updatedRecord).catch(err => console.error('Failed to save record to Firebase:', err));
   };
 
   // Add single record
@@ -94,6 +120,7 @@ export default function App() {
     const nextRecords = [newRec, ...records];
     setRecords(nextRecords);
     saveRecords(nextRecords);
+    saveBillingRecord(newRec).catch(err => console.error('Failed to add record to Firebase:', err));
   };
 
   // Add batch records
@@ -101,6 +128,7 @@ export default function App() {
     const nextRecords = [...newBatch, ...records];
     setRecords(nextRecords);
     saveRecords(nextRecords);
+    saveBatchBillingRecords(newBatch).catch(err => console.error('Failed to add batch records to Firebase:', err));
   };
 
   // Delete record
@@ -108,11 +136,13 @@ export default function App() {
     const nextRecords = records.filter(r => r.id !== recordId);
     setRecords(nextRecords);
     saveRecords(nextRecords);
+    removeBillingRecord(recordId).catch(err => console.error('Failed to delete record from Firebase:', err));
   };
 
   // Mark selected records as reported HO
   const handleMarkReportedHO = (recordIds: string[]) => {
     const today = new Date().toISOString().slice(0, 10);
+    const updatedBatch: BillingRecord[] = [];
     const nextRecords = records.map(r => {
       if (recordIds.includes(r.id)) {
         const updatedStages = {
@@ -123,18 +153,23 @@ export default function App() {
             completedAt: new Date().toISOString(),
           }
         };
-        return {
+        const updatedRec = {
           ...r,
           stages: updatedStages,
           overallStatus: 'Completed HO' as const,
           updatedAt: today,
         };
+        updatedBatch.push(updatedRec);
+        return updatedRec;
       }
       return r;
     });
 
     setRecords(nextRecords);
     saveRecords(nextRecords);
+    if (updatedBatch.length > 0) {
+      saveBatchBillingRecords(updatedBatch).catch(err => console.error('Failed to update HO report batch to Firebase:', err));
+    }
   };
 
   // Reset to initial demo data
@@ -142,6 +177,7 @@ export default function App() {
     if (confirm('Kembalikan data ke contoh awal pabrik? Perubahan Anda akan di-reset.')) {
       const reset = resetToInitialRecords();
       setRecords(reset);
+      saveBatchBillingRecords(reset).catch(err => console.error('Failed to reset records in Firebase:', err));
     }
   };
 
@@ -200,7 +236,7 @@ export default function App() {
       />
 
       {/* Main Content Workspace */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <main className="max-w-[1650px] mx-auto px-3 sm:px-5 lg:px-6 pt-5">
         
         {/* Metric Cards */}
         <StatsCards records={filteredRecords} />

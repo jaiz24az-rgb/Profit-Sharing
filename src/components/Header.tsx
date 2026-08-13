@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
       {/* Top Banner & Title */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+      <div className="max-w-[1650px] mx-auto px-3 sm:px-5 lg:px-6 py-3">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           
           {/* App Branding */}
@@ -58,6 +58,10 @@ export const Header: React.FC<HeaderProps> = ({
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                   Sriwijaya Air & NAM Air
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm" title="Data tersimpan otomatis & sinkron real-time di Firebase Cloud Firestore">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Firebase Real-time Sync</span>
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">

@@ -1,0 +1,24 @@
+{
+  "entities": {
+    "billingRecords": {
+      "title": "Billing Record",
+      "description": "Cargo invoicing checklist record for airlines and vendors",
+      "properties": {
+        "id": { "type": "string" },
+        "airline": { "type": "string" },
+        "vendor": { "type": "string" },
+        "periode": { "type": "string" },
+        "noInvoice": { "type": "string" },
+        "noIrf": { "type": "string" },
+        "nominal": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "overallStatus": { "type": "string" },
+        "catatanUtama": { "type": "string" },
+        "stages": { "type": "object" },
+        "irfDetail": { "type": "object" }
+      },
+      "required": ["id", "airline", "vendor", "periode", "nominal"]
+    }
+  }
+}
