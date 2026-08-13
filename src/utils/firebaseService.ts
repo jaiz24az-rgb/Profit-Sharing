@@ -1,6 +1,8 @@
 import { 
   collection, 
   doc, 
+  getDoc,
+  getDocs,
   onSnapshot, 
   setDoc, 
   deleteDoc, 
@@ -11,10 +13,12 @@ import { BillingRecord } from '../types';
 import { INITIAL_BILLING_RECORDS } from '../data/initialData';
 
 const COLLECTION_NAME = 'billingRecords';
+const INIT_DOC_REF = doc(db, '_system', 'init');
 
 /**
  * Subscribes to real-time updates of billing records from Firestore.
- * Automatically seeds initial data if the collection is empty.
+ * Seeds initial data ONLY on the first system initialization.
+ * Respects empty state if user intentionally deletes all records.
  */
 export function subscribeToBillingRecords(
   onData: (records: BillingRecord[]) => void,
@@ -26,18 +30,29 @@ export function subscribeToBillingRecords(
     colRef,
     async (snapshot) => {
       if (snapshot.empty) {
-        // Seed initial records into Firestore if collection is brand new/empty
         try {
-          const batch = writeBatch(db);
-          INITIAL_BILLING_RECORDS.forEach((rec) => {
-            const docRef = doc(db, COLLECTION_NAME, rec.id);
-            batch.set(docRef, rec);
-          });
-          await batch.commit();
+          // Check if system has already been initialized before
+          const initSnap = await getDoc(INIT_DOC_REF);
+          if (!initSnap.exists()) {
+            // First time boot -> seed initial demo data
+            const batch = writeBatch(db);
+            batch.set(INIT_DOC_REF, { initialized: true, initializedAt: new Date().toISOString() });
+            INITIAL_BILLING_RECORDS.forEach((rec) => {
+              const docRef = doc(db, COLLECTION_NAME, rec.id);
+              batch.set(docRef, rec);
+            });
+            await batch.commit();
+            return;
+          } else {
+            // System was initialized previously and user intentionally deleted all records
+            onData([]);
+            return;
+          }
         } catch (err) {
-          console.error('Failed to seed initial Firestore records:', err);
+          console.error('Error checking system initialization state:', err);
+          onData([]);
+          return;
         }
-        return;
       }
 
       const records: BillingRecord[] = [];
@@ -83,3 +98,30 @@ export async function saveBatchBillingRecords(records: BillingRecord[]): Promise
   });
   await batch.commit();
 }
+
+/**
+ * Reset Firestore collection back to factory initial records
+ */
+export async function resetFirestoreToInitial(initialRecords: BillingRecord[]): Promise<void> {
+  const colRef = collection(db, COLLECTION_NAME);
+  const snapshot = await getDocs(colRef);
+  
+  const batch = writeBatch(db);
+  
+  // Delete existing docs
+  snapshot.docs.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+
+  // Seed initial records
+  initialRecords.forEach((rec) => {
+    const docRef = doc(db, COLLECTION_NAME, rec.id);
+    batch.set(docRef, rec);
+  });
+
+  // Ensure init marker is set
+  batch.set(INIT_DOC_REF, { initialized: true, resetAt: new Date().toISOString() });
+
+  await batch.commit();
+}
+

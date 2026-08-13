@@ -21,7 +21,8 @@ import {
   subscribeToBillingRecords, 
   saveBillingRecord, 
   removeBillingRecord, 
-  saveBatchBillingRecords 
+  saveBatchBillingRecords,
+  resetFirestoreToInitial
 } from './utils/firebaseService';
 import { exportToExcel } from './utils/export';
 import { Header } from './components/Header';
@@ -177,7 +178,7 @@ export default function App() {
     if (confirm('Kembalikan data ke contoh awal pabrik? Perubahan Anda akan di-reset.')) {
       const reset = resetToInitialRecords();
       setRecords(reset);
-      saveBatchBillingRecords(reset).catch(err => console.error('Failed to reset records in Firebase:', err));
+      resetFirestoreToInitial(reset).catch(err => console.error('Failed to reset records in Firebase:', err));
     }
   };
 
