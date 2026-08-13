@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BillingRecord, STAGES, StageKey, Airline, Vendor } from '../types';
+import { BillingRecord, STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS } from '../types';
 import { formatRupiah } from '../utils/export';
-import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink } from 'lucide-react';
+import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt } from 'lucide-react';
 import { generateOfficialIRFNumber } from '../utils/irfHelper';
 
 interface RecordModalProps {
@@ -11,6 +11,8 @@ interface RecordModalProps {
   onSave: (updatedRecord: BillingRecord) => void;
   onDelete: (recordId: string) => void;
   onOpenIRFModal?: (record: BillingRecord) => void;
+  vendorOptions?: string[];
+  onOpenAddVendorModal?: () => void;
 }
 
 export const RecordModal: React.FC<RecordModalProps> = ({
@@ -20,6 +22,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   onSave,
   onDelete,
   onOpenIRFModal,
+  vendorOptions,
+  onOpenAddVendorModal,
 }) => {
   const [formData, setFormData] = useState<BillingRecord | null>(record);
 
@@ -112,15 +116,31 @@ export const RecordModal: React.FC<RecordModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1">Instansi / Vendor (Penerima Tagihan)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-400">Instansi / Vendor (Penerima Tagihan)</label>
+                {onOpenAddVendorModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAddVendorModal}
+                    className="px-2 py-0.5 rounded bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    title="Tambah Vendor Baru dengan Tanda +"
+                  >
+                    <Plus className="w-3 h-3 text-blue-400 stroke-[3]" />
+                    <span>+ Vendor</span>
+                  </button>
+                )}
+              </div>
               <select
                 value={formData.vendor}
                 onChange={(e) => setFormData(prev => prev ? ({ ...prev, vendor: e.target.value as Vendor }) : null)}
                 className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium focus:border-blue-500"
               >
-                <option value="PT 21 Express">PT 21 Express</option>
-                <option value="PT Gatrans Mulia Indonesia">PT Gatrans Mulia Indonesia</option>
-                <option value="PT Mitra Kargo Nusantara">PT Mitra Kargo Nusantara</option>
+                {(vendorOptions || (formData.category === 'OPERASIONAL' ? DEFAULT_OPERATIONAL_VENDORS : DEFAULT_CARGO_VENDORS)).map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+                {!vendorOptions?.includes(formData.vendor) && (
+                  <option value={formData.vendor}>{formData.vendor}</option>
+                )}
               </select>
             </div>
 
@@ -146,12 +166,15 @@ export const RecordModal: React.FC<RecordModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1">No. Invoice</label>
+              <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1">
+                <Receipt className="w-3.5 h-3.5 text-blue-400" />
+                <span>No. Invoice Vendor ({formData.airline})</span>
+              </label>
               <input
                 type="text"
                 value={formData.noInvoice || ''}
                 onChange={(e) => setFormData(prev => prev ? ({ ...prev, noInvoice: e.target.value }) : null)}
-                placeholder="INV/SJ/2026/01/xxx"
+                placeholder="INV/VDR/2026/08/xxx"
                 className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
               />
             </div>

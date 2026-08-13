@@ -13,9 +13,10 @@ import {
   Building2,
   Plane,
   Receipt,
-  Boxes
+  Boxes,
+  Plus
 } from 'lucide-react';
-import { FilterState, Airline, Vendor, BillingCategory, DEFAULT_OPERATIONAL_VENDORS } from '../types';
+import { FilterState, Airline, Vendor, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS } from '../types';
 
 interface HeaderProps {
   viewMode: 'matrix' | 'kanban' | 'analytics';
@@ -28,6 +29,9 @@ interface HeaderProps {
   onExportExcel: () => void;
   onResetData: () => void;
   totalRecordsCount: number;
+  allCargoVendors?: string[];
+  allOperationalVendors?: string[];
+  onOpenAddVendorModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,6 +45,9 @@ export const Header: React.FC<HeaderProps> = ({
   onExportExcel,
   onResetData,
   totalRecordsCount,
+  allCargoVendors = DEFAULT_CARGO_VENDORS,
+  allOperationalVendors = DEFAULT_OPERATIONAL_VENDORS,
+  onOpenAddVendorModal,
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
@@ -82,6 +89,18 @@ export const Header: React.FC<HeaderProps> = ({
               <PlusCircle className="w-4 h-4" />
               <span>Tambah Tagihan</span>
             </button>
+
+            {onOpenAddVendorModal && (
+              <button
+                onClick={onOpenAddVendorModal}
+                id="btn-add-vendor"
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/80 text-xs font-semibold flex items-center space-x-1 transition shadow-sm cursor-pointer"
+                title="Tambah Vendor / Instansi Baru (+)"
+              >
+                <Plus className="w-4 h-4 text-indigo-400 stroke-[3]" />
+                <span>+ Vendor</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenHOReportModal}
@@ -245,14 +264,12 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <option value="ALL">🏢 Semua Vendor / Instansi</option>
               {filters.category !== 'OPERASIONAL' && (
-                <>
-                  <option value="PT 21 Express">PT 21 Express</option>
-                  <option value="PT Gatrans Mulia Indonesia">PT Gatrans Mulia Indonesia</option>
-                  <option value="PT Mitra Kargo Nusantara">PT Mitra Kargo Nusantara</option>
-                </>
+                allCargoVendors.map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))
               )}
               {filters.category !== 'CARGO' && (
-                DEFAULT_OPERATIONAL_VENDORS.map(v => (
+                allOperationalVendors.map(v => (
                   <option key={v} value={v}>{v}</option>
                 ))
               )}

@@ -96,8 +96,8 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
                   )}
                   {rec.noInvoice && (
                     <div className="flex justify-between text-slate-300">
-                      <span className="text-slate-500">No. Invoice:</span>
-                      <span className="font-mono text-[11px] text-blue-300">{rec.noInvoice}</span>
+                      <span className="text-slate-500">No. Inv Vendor:</span>
+                      <span className="font-mono text-[11px] text-blue-300 font-semibold">{rec.noInvoice}</span>
                     </div>
                   )}
                 </div>

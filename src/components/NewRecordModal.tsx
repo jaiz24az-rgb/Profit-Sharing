@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS } from '../types';
-import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes } from 'lucide-react';
+import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS } from '../types';
+import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes, Plus, Receipt } from 'lucide-react';
 import { generateOfficialIRFNumber, buildDefaultIRFData } from '../utils/irfHelper';
 import { parseExcelForIRF } from '../utils/excelHelper';
 
@@ -9,6 +9,9 @@ interface NewRecordModalProps {
   onClose: () => void;
   onAddRecord: (newRecord: BillingRecord) => void;
   onAddBatchRecords: (records: BillingRecord[]) => void;
+  cargoVendorOptions?: string[];
+  operationalVendorOptions?: string[];
+  onOpenAddVendorModal?: () => void;
 }
 
 export const NewRecordModal: React.FC<NewRecordModalProps> = ({
@@ -16,6 +19,9 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
   onClose,
   onAddRecord,
   onAddBatchRecords,
+  cargoVendorOptions = DEFAULT_CARGO_VENDORS,
+  operationalVendorOptions = DEFAULT_OPERATIONAL_VENDORS,
+  onOpenAddVendorModal,
 }) => {
   const [category, setCategory] = useState<BillingCategory>('CARGO');
   const [mode, setMode] = useState<'single' | 'batch'>('single');
@@ -350,30 +356,69 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
           {/* Vendor selection */}
           {category === 'CARGO' && mode === 'single' && (
             <div>
-              <label className="block text-slate-400 mb-1 font-medium font-semibold">Instansi / Vendor Cargo</label>
-              <select
-                value={vendor}
-                onChange={(e) => setVendor(e.target.value as Vendor)}
-                className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-medium"
-              >
-                <option value="PT 21 Express">PT 21 Express</option>
-                <option value="PT Gatrans Mulia Indonesia">PT Gatrans Mulia Indonesia</option>
-                <option value="PT Mitra Kargo Nusantara">PT Mitra Kargo Nusantara</option>
-              </select>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-300 font-semibold text-xs">Instansi / Vendor Cargo</label>
+                {onOpenAddVendorModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAddVendorModal}
+                    className="px-2 py-0.5 rounded bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/40 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    title="Tambah Vendor Baru dengan Tanda +"
+                  >
+                    <Plus className="w-3 h-3 text-blue-400 stroke-[3]" />
+                    <span>+ Vendor</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={vendor}
+                  onChange={(e) => setVendor(e.target.value as Vendor)}
+                  className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-medium text-xs"
+                >
+                  {cargoVendorOptions.map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                  <option value="LAINNYA">+ Vendor Baru (Ketik Manual)</option>
+                </select>
+              </div>
+              {vendor === 'LAINNYA' && (
+                <input
+                  type="text"
+                  placeholder="Masukkan nama vendor cargo..."
+                  value={customVendor}
+                  onChange={(e) => setCustomVendor(e.target.value)}
+                  className="w-full mt-2 p-2.5 bg-slate-950 border border-blue-500/80 rounded-lg text-white focus:outline-none text-xs"
+                  required
+                />
+              )}
             </div>
           )}
 
           {category === 'OPERASIONAL' && (
             <div>
-              <label className="block text-slate-400 mb-1 font-medium font-semibold text-amber-300">
-                Pilih Vendor Operasional (Non-Cargo)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-amber-300 font-semibold text-xs">
+                  Pilih Vendor Operasional (Non-Cargo)
+                </label>
+                {onOpenAddVendorModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAddVendorModal}
+                    className="px-2 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    title="Tambah Vendor Operasional Baru dengan Tanda +"
+                  >
+                    <Plus className="w-3 h-3 text-amber-400 stroke-[3]" />
+                    <span>+ Vendor</span>
+                  </button>
+                )}
+              </div>
               <select
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
-                className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-amber-500 font-medium"
+                className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-amber-500 font-medium text-xs"
               >
-                {DEFAULT_OPERATIONAL_VENDORS.map(v => (
+                {operationalVendorOptions.map(v => (
                   <option key={v} value={v}>{v}</option>
                 ))}
                 <option value="LAINNYA">+ Nama Vendor Lainnya (Ketik Manual)</option>
@@ -385,12 +430,33 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                   placeholder="Masukkan nama vendor (e.g. PT Gapura Angkasa, Hotel Mercure, dll)"
                   value={customVendor}
                   onChange={(e) => setCustomVendor(e.target.value)}
-                  className="w-full mt-2 p-2.5 bg-slate-950 border border-amber-500/80 rounded-lg text-white focus:outline-none"
+                  className="w-full mt-2 p-2.5 bg-slate-950 border border-amber-500/80 rounded-lg text-white focus:outline-none text-xs"
                   required
                 />
               )}
             </div>
           )}
+
+          {/* No. Invoice Vendor Field (Untuk PT Sriwijaya Air & PT NAM Air) */}
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5 text-blue-400" />
+                <span>No. Invoice Vendor (untuk Tagihan {airline})</span>
+              </label>
+              <span className="text-[10px] text-slate-400 font-medium">Opsional / Dari Vendor</span>
+            </div>
+            <input
+              type="text"
+              value={noInvoice}
+              onChange={(e) => setNoInvoice(e.target.value)}
+              placeholder="e.g. INV/VDR/2026/08/104 atau INV/SUB/099"
+              className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500 focus:outline-none"
+            />
+            <p className="text-[10px] text-slate-400">
+              Nomor Invoice resmi yang diterbitkan Vendor untuk ditagihkan ke {airline}.
+            </p>
+          </div>
 
           <div>
             <label className="block text-slate-400 mb-1 font-medium">Data Periode / Bulan Tagihan</label>
@@ -400,7 +466,7 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
               onChange={(e) => setPeriode(e.target.value)}
               placeholder="Contoh: Juli 2026"
               required
-              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono"
+              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
             />
           </div>
 
@@ -413,7 +479,7 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
               value={nominal}
               onChange={(e) => setNominal(Number(e.target.value))}
               required
-              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono"
+              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
             />
           </div>
 
@@ -452,36 +518,24 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1">No Invoice (Opsional)</label>
-                <input
-                  type="text"
-                  value={noInvoice}
-                  onChange={(e) => setNoInvoice(e.target.value)}
-                  placeholder="INV/SJ/2026/01/..."
-                  className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs"
-                />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-400 font-medium">No. IRF (Format Resmi Internal)</label>
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateIRF}
+                  className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" /> Auto Format
+                </button>
               </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-slate-400">No IRF (Format Resmi)</label>
-                  <button
-                    type="button"
-                    onClick={handleAutoGenerateIRF}
-                    className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
-                  >
-                    <RefreshCw className="w-2.5 h-2.5" /> Auto Format
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={noIrf}
-                  onChange={(e) => setNoIrf(e.target.value)}
-                  placeholder="002/SJ-CRG/SUB/VII/2026"
-                  className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs"
-                />
-              </div>
+              <input
+                type="text"
+                value={noIrf}
+                onChange={(e) => setNoIrf(e.target.value)}
+                placeholder="002/SJ-CRG/SUB/VII/2026"
+                className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs"
+              />
             </div>
           )}
 

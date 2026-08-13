@@ -264,9 +264,15 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                   {/* Vendor & Nominal */}
                   <td className="px-2 py-2 border-r border-slate-800 font-semibold text-slate-200">
                     <div className="flex flex-col">
-                      <span className="text-slate-100 text-[11px] truncate" title={rec.vendor}>
+                      <span className="text-slate-100 text-[11px] truncate font-bold" title={rec.vendor}>
                         {rec.vendor.replace('PT ', '')}
                       </span>
+                      {rec.noInvoice && (
+                        <span className="text-[9px] text-blue-300 font-mono flex items-center gap-0.5 mt-0.5 truncate" title={`No. Invoice Vendor ke ${rec.airline}: ${rec.noInvoice}`}>
+                          <Receipt className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+                          <span className="truncate">Inv Vdr: {rec.noInvoice}</span>
+                        </span>
+                      )}
                       <span className="text-[10px] text-emerald-400 font-mono mt-0.5">
                         {formatRupiah(rec.nominal)}
                       </span>

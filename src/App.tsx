@@ -9,7 +9,10 @@ import {
   FilterState, 
   StageKey, 
   Airline, 
-  Vendor 
+  Vendor,
+  DEFAULT_CARGO_VENDORS,
+  DEFAULT_OPERATIONAL_VENDORS,
+  BillingCategory
 } from './types';
 import { 
   getStoredRecords, 
@@ -36,10 +39,45 @@ import { HOReportModal } from './components/HOReportModal';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { IRFDocumentModal } from './components/IRFDocumentModal';
 import { SplitPaymentModal } from './components/SplitPaymentModal';
+import { AddVendorModal } from './components/AddVendorModal';
 
 export default function App() {
   const [records, setRecords] = useState<BillingRecord[]>([]);
   const [viewMode, setViewMode] = useState<'matrix' | 'kanban' | 'analytics'>('matrix');
+
+  // Custom Vendors State
+  const [customVendors, setCustomVendors] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('checklist_custom_vendors');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [isAddVendorModalOpen, setIsAddVendorModalOpen] = useState(false);
+
+  const handleAddVendor = (vendorName: string, category: BillingCategory) => {
+    if (!customVendors.includes(vendorName)) {
+      const next = [...customVendors, vendorName];
+      setCustomVendors(next);
+      try {
+        localStorage.setItem('checklist_custom_vendors', JSON.stringify(next));
+      } catch (e) {
+        console.error('Failed to save custom vendor:', e);
+      }
+    }
+  };
+
+  const allCargoVendors = useMemo(() => {
+    const fromRecs = records.filter(r => r.category !== 'OPERASIONAL').map(r => r.vendor);
+    return Array.from(new Set([...DEFAULT_CARGO_VENDORS, ...customVendors, ...fromRecs]));
+  }, [records, customVendors]);
+
+  const allOperationalVendors = useMemo(() => {
+    const fromRecs = records.filter(r => r.category === 'OPERASIONAL').map(r => r.vendor);
+    return Array.from(new Set([...DEFAULT_OPERATIONAL_VENDORS, ...customVendors, ...fromRecs]));
+  }, [records, customVendors]);
 
   // Modals state
   const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
@@ -244,6 +282,9 @@ export default function App() {
         onExportExcel={() => exportToExcel(filteredRecords)}
         onResetData={handleResetData}
         totalRecordsCount={filteredRecords.length}
+        allCargoVendors={allCargoVendors}
+        allOperationalVendors={allOperationalVendors}
+        onOpenAddVendorModal={() => setIsAddVendorModalOpen(true)}
       />
 
       {/* Main Content Workspace */}
@@ -304,6 +345,8 @@ export default function App() {
         onSave={handleSaveRecord}
         onDelete={handleDeleteRecord}
         onOpenIRFModal={handleOpenIRFModal}
+        vendorOptions={selectedRecord?.category === 'OPERASIONAL' ? allOperationalVendors : allCargoVendors}
+        onOpenAddVendorModal={() => setIsAddVendorModalOpen(true)}
       />
 
       {splitRecord && (
@@ -341,6 +384,15 @@ export default function App() {
         onClose={() => setIsNewModalOpen(false)}
         onAddRecord={handleAddRecord}
         onAddBatchRecords={handleAddBatchRecords}
+        cargoVendorOptions={allCargoVendors}
+        operationalVendorOptions={allOperationalVendors}
+        onOpenAddVendorModal={() => setIsAddVendorModalOpen(true)}
+      />
+
+      <AddVendorModal
+        isOpen={isAddVendorModalOpen}
+        onClose={() => setIsAddVendorModalOpen(false)}
+        onAddVendor={handleAddVendor}
       />
 
       <HOReportModal

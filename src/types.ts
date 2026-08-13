@@ -22,6 +22,12 @@ export type OperationalVendorPreset =
 
 export type Vendor = string;
 
+export const DEFAULT_CARGO_VENDORS: string[] = [
+  'PT 21 Express',
+  'PT Gatrans Mulia Indonesia',
+  'PT Mitra Kargo Nusantara',
+];
+
 export const DEFAULT_OPERATIONAL_VENDORS: string[] = [
   'PT Angkasa Pura Indonesia',
   'Halogen Hotel',
