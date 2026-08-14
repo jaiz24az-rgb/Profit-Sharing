@@ -16,6 +16,34 @@ const COLLECTION_NAME = 'billingRecords';
 const INIT_DOC_REF = doc(db, '_system', 'init');
 
 /**
+ * Recursively cleans an object for Firestore by removing any keys with `undefined` values
+ * and cleaning nested arrays / objects. Firestore throws runtime errors if `undefined` is passed.
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    if (data instanceof Date) {
+      return data;
+    }
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
+/**
  * Subscribes to real-time updates of billing records from Firestore.
  * Seeds initial data ONLY on the first system initialization.
  * Respects empty state if user intentionally deletes all records.
@@ -39,7 +67,7 @@ export function subscribeToBillingRecords(
             batch.set(INIT_DOC_REF, { initialized: true, initializedAt: new Date().toISOString() });
             INITIAL_BILLING_RECORDS.forEach((rec) => {
               const docRef = doc(db, COLLECTION_NAME, rec.id);
-              batch.set(docRef, rec);
+              batch.set(docRef, cleanForFirestore(rec));
             });
             await batch.commit();
             return;
@@ -76,7 +104,8 @@ export function subscribeToBillingRecords(
  */
 export async function saveBillingRecord(record: BillingRecord): Promise<void> {
   const docRef = doc(db, COLLECTION_NAME, record.id);
-  await setDoc(docRef, record, { merge: true });
+  const cleanedData = cleanForFirestore(record);
+  await setDoc(docRef, cleanedData, { merge: true });
 }
 
 /**
@@ -94,7 +123,7 @@ export async function saveBatchBillingRecords(records: BillingRecord[]): Promise
   const batch = writeBatch(db);
   records.forEach((rec) => {
     const docRef = doc(db, COLLECTION_NAME, rec.id);
-    batch.set(docRef, rec, { merge: true });
+    batch.set(docRef, cleanForFirestore(rec), { merge: true });
   });
   await batch.commit();
 }
@@ -116,7 +145,7 @@ export async function resetFirestoreToInitial(initialRecords: BillingRecord[]): 
   // Seed initial records
   initialRecords.forEach((rec) => {
     const docRef = doc(db, COLLECTION_NAME, rec.id);
-    batch.set(docRef, rec);
+    batch.set(docRef, cleanForFirestore(rec));
   });
 
   // Ensure init marker is set

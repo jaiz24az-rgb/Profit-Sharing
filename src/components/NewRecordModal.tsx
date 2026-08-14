@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem } from '../types';
-import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes, Plus, Receipt, Trash2, Calendar, DollarSign, ListPlus } from 'lucide-react';
+import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType, BillingPointItem } from '../types';
+import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes, Plus, Receipt, Trash2, Calendar, DollarSign, ListPlus, Calculator, Percent } from 'lucide-react';
 import { generateOfficialIRFNumber, buildDefaultIRFData } from '../utils/irfHelper';
 import { parseExcelForIRF } from '../utils/excelHelper';
 import { formatRupiah } from '../utils/export';
+import { calculateTaxAndNet, getTaxRate } from '../utils/taxHelper';
 
 interface NewRecordModalProps {
   isOpen: boolean;
@@ -37,6 +38,43 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
   const [noIrf, setNoIrf] = useState('');
   const [noIom, setNoIom] = useState('');
   const [noApgnr, setNoApgnr] = useState('');
+
+  // Tax & PPN State
+  const [taxType, setTaxType] = useState<TaxType>('JASA');
+  const [includePpn, setIncludePpn] = useState(true); // PPN 11%
+
+  // Billing Points Breakdown (Subtotal Point-point DPP)
+  const [useBillingPoints, setUseBillingPoints] = useState(false);
+  const [billingPoints, setBillingPoints] = useState<BillingPointItem[]>([
+    { id: '1', description: 'Point Tagihan / Biaya Pokok 1', amount: 67594162 },
+  ]);
+
+  const handleAddBillingPoint = () => {
+    const nextId = String(Date.now());
+    setBillingPoints(prev => [
+      ...prev,
+      { id: nextId, description: `Point Tagihan ${prev.length + 1}`, amount: 0 }
+    ]);
+  };
+
+  const handleRemoveBillingPoint = (id: string) => {
+    if (billingPoints.length <= 1) {
+      alert('Minimal harus ada 1 point tagihan.');
+      return;
+    }
+    setBillingPoints(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleUpdateBillingPoint = (id: string, field: keyof BillingPointItem, value: any) => {
+    setBillingPoints(prev => prev.map(p => {
+      if (p.id === id) {
+        return { ...p, [field]: value };
+      }
+      return p;
+    }));
+  };
+
+  const calculatedPointsDpp = billingPoints.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
 
   // Multi Periode & Nominal Breakdown State
   const [useMultiPeriode, setUseMultiPeriode] = useState(false);
@@ -152,8 +190,19 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
     }
 
     const finalPeriode = useMultiPeriode ? (derivedCombinedPeriode || periode) : periode;
-    const finalNominal = useMultiPeriode ? calculatedTotalNominal : (Number(nominal) || 0);
-    const finalPeriodItems = useMultiPeriode ? periodItems : undefined;
+    
+    // Determine DPP (Dasar Pengenaan Pajak / Pokok dari point-point atau subtotal)
+    let finalDpp = 0;
+    if (useBillingPoints) {
+      finalDpp = calculatedPointsDpp;
+    } else if (useMultiPeriode) {
+      finalDpp = calculatedTotalNominal;
+    } else {
+      finalDpp = Number(nominal) || 0;
+    }
+
+    const taxCalc = calculateTaxAndNet(finalDpp, taxType, includePpn, false);
+    const finalNominal = taxCalc.grossAmount; // Total Tagihan (DPP + PPN 11%)
 
     if (category === 'OPERASIONAL') {
       const id = `REC-OP-2026-${Math.floor(100 + Math.random() * 900)}`;
@@ -165,25 +214,47 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
         airline,
         vendor: selectedVendor,
         periode: finalPeriode,
+        dppAmount: taxCalc.dppAmount,
+        includePpn: taxCalc.includePpn,
+        ppnRate: taxCalc.ppnRate,
+        ppnNominal: taxCalc.ppnNominal,
         nominal: finalNominal,
-        periodItems: finalPeriodItems,
-        noInvoice: noInvoice || undefined,
-        noIom: finalIom,
-        noApgnr: noApgnr || undefined,
+        taxType,
+        taxRate: taxCalc.rate,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
         createdAt: new Date().toISOString().slice(0, 10),
         updatedAt: new Date().toISOString().slice(0, 10),
         overallStatus: 'In Progress',
-        stages: createEmptyOperationalStages(finalIom, noApgnr),
+        stages: createEmptyOperationalStages(finalIom, noApgnr || undefined),
         operationalDetail: {
           noIom: finalIom,
           iomDate: new Date().toISOString().slice(0, 10),
           iomCompleted: true,
-          noApgnr: noApgnr || undefined,
-          apgnrDate: noApgnr ? new Date().toISOString().slice(0, 10) : undefined,
           apgnrCompleted: !!noApgnr,
           installments: []
         }
       };
+
+      if (useMultiPeriode && periodItems && periodItems.length > 0) {
+        newRec.periodItems = periodItems;
+      }
+      if (useBillingPoints && billingPoints && billingPoints.length > 0) {
+        newRec.billingPoints = billingPoints;
+      }
+      if (noInvoice && noInvoice.trim()) {
+        newRec.noInvoice = noInvoice.trim();
+      }
+      if (finalIom) {
+        newRec.noIom = finalIom;
+      }
+      if (noApgnr && noApgnr.trim()) {
+        newRec.noApgnr = noApgnr.trim();
+        if (newRec.operationalDetail) {
+          newRec.operationalDetail.noApgnr = noApgnr.trim();
+          newRec.operationalDetail.apgnrDate = new Date().toISOString().slice(0, 10);
+        }
+      }
 
       onAddRecord(newRec);
     } else if (mode === 'single') {
@@ -196,15 +267,31 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
         airline,
         vendor: selectedVendor,
         periode: finalPeriode,
+        dppAmount: taxCalc.dppAmount,
+        includePpn: taxCalc.includePpn,
+        ppnRate: taxCalc.ppnRate,
+        ppnNominal: taxCalc.ppnNominal,
         nominal: finalNominal,
-        periodItems: finalPeriodItems,
-        noInvoice: noInvoice || undefined,
+        taxType,
+        taxRate: taxCalc.rate,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
         noIrf: finalIrfNo,
         createdAt: new Date().toISOString().slice(0, 10),
         updatedAt: new Date().toISOString().slice(0, 10),
         overallStatus: 'In Progress',
         stages: createEmptyCargoStages(finalIrfNo),
       };
+
+      if (useMultiPeriode && periodItems && periodItems.length > 0) {
+        newRec.periodItems = periodItems;
+      }
+      if (useBillingPoints && billingPoints && billingPoints.length > 0) {
+        newRec.billingPoints = billingPoints;
+      }
+      if (noInvoice && noInvoice.trim()) {
+        newRec.noInvoice = noInvoice.trim();
+      }
 
       const baseIrf = buildDefaultIRFData({
         airline: newRec.airline,
@@ -216,8 +303,14 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
 
       if (importedExcelData?.items && importedExcelData.items.length > 0) {
         baseIrf.items = importedExcelData.items;
-        baseIrf.totalAmount = importedExcelData.items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
-        newRec.nominal = baseIrf.totalAmount;
+        const excelDpp = importedExcelData.items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
+        const excelTaxCalc = calculateTaxAndNet(excelDpp, taxType, includePpn, false);
+        baseIrf.totalAmount = excelTaxCalc.grossAmount;
+        newRec.dppAmount = excelTaxCalc.dppAmount;
+        newRec.ppnNominal = excelTaxCalc.ppnNominal;
+        newRec.nominal = excelTaxCalc.grossAmount;
+        newRec.deductionNominal = excelTaxCalc.deduction;
+        newRec.netPaymentHo = excelTaxCalc.netPaymentHo;
       }
 
       newRec.irfDetail = baseIrf;
@@ -234,21 +327,34 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       const batch: BillingRecord[] = cargoVendors.map((v, i) => {
         const seq = Math.floor(1 + Math.random() * 50);
         const batchIrfNo = generateOfficialIRFNumber(airline, seq, 'SUB', new Date());
+        const recDpp = Number(nominal) || 50000000;
+        const batchTaxCalc = calculateTaxAndNet(recDpp, taxType, includePpn, false);
 
         const rec: BillingRecord = {
           id: `REC-2026-${Math.floor(100 + Math.random() * 900)}-${i}`,
           category: 'CARGO',
           airline,
           vendor: v,
-          periode,
-          nominal: Number(nominal) || 50000000,
-          noInvoice: noInvoice ? `${noInvoice}/${i + 1}` : undefined,
+          periode: periode,
+          dppAmount: batchTaxCalc.dppAmount,
+          includePpn: batchTaxCalc.includePpn,
+          ppnRate: batchTaxCalc.ppnRate,
+          ppnNominal: batchTaxCalc.ppnNominal,
+          nominal: batchTaxCalc.grossAmount,
+          taxType,
+          taxRate: batchTaxCalc.rate,
+          deductionNominal: batchTaxCalc.deduction,
+          netPaymentHo: batchTaxCalc.netPaymentHo,
           noIrf: batchIrfNo,
           createdAt: new Date().toISOString().slice(0, 10),
           updatedAt: new Date().toISOString().slice(0, 10),
           overallStatus: 'In Progress',
           stages: createEmptyCargoStages(batchIrfNo),
         };
+
+        if (noInvoice && noInvoice.trim()) {
+          rec.noInvoice = `${noInvoice.trim()}/${i + 1}`;
+        }
 
         rec.irfDetail = buildDefaultIRFData({
           airline: rec.airline,
@@ -502,28 +608,49 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
 
           {/* Data Periode & Nominal Tagihan Section */}
           <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80 gap-2">
               <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-blue-400" />
-                <span>Rincian Periode & Nominal Tagihan</span>
+                <span>Rincian Periode & Point Tagihan Pokok (DPP)</span>
               </label>
 
               {/* Mode Toggle */}
-              <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+              <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px] self-start sm:self-auto">
                 <button
                   type="button"
-                  onClick={() => setUseMultiPeriode(false)}
+                  onClick={() => {
+                    setUseBillingPoints(false);
+                    setUseMultiPeriode(false);
+                  }}
                   className={`px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
-                    !useMultiPeriode
+                    !useBillingPoints && !useMultiPeriode
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Single Periode
+                  Nominal Langsung
                 </button>
                 <button
                   type="button"
-                  onClick={() => setUseMultiPeriode(true)}
+                  onClick={() => {
+                    setUseBillingPoints(true);
+                    setUseMultiPeriode(false);
+                  }}
+                  className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1 transition cursor-pointer ${
+                    useBillingPoints
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Plus className="w-3 h-3 text-emerald-300" />
+                  <span>Rincian Point (+)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseMultiPeriode(true);
+                    setUseBillingPoints(false);
+                  }}
                   className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1 transition cursor-pointer ${
                     useMultiPeriode
                       ? 'bg-amber-600 text-white shadow-sm'
@@ -536,7 +663,8 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
               </div>
             </div>
 
-            {!useMultiPeriode ? (
+            {/* View 1: Standard Direct DPP Input */}
+            {!useBillingPoints && !useMultiPeriode && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1 text-[11px] font-medium">Data Periode Tagihan</label>
@@ -545,28 +673,115 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                     value={periode}
                     onChange={(e) => setPeriode(e.target.value)}
                     placeholder="Contoh: 01 - 15 Feb 2026"
-                    required={!useMultiPeriode}
+                    required
                     className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1 text-[11px] font-medium">
-                    {category === 'OPERASIONAL' ? 'Total Nominal Tagihan (Rp)' : 'Nominal Tagihan (Rp)'}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-300 text-[11px] font-medium">
+                      Subtotal / Nilai Pokok DPP (Rp)
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-mono">Dikenakan PPN 11%</span>
+                  </div>
                   <input
                     type="number"
                     value={nominal}
                     onChange={(e) => setNominal(Number(e.target.value))}
-                    required={!useMultiPeriode}
+                    required
+                    placeholder="e.g. 67594162"
                     className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
                   />
                 </div>
               </div>
-            ) : (
+            )}
+
+            {/* View 2: Multi-Point Breakdown */}
+            {useBillingPoints && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-400 text-[11px] font-medium">Data Periode Tagihan</label>
+                  <span className="text-[10px] text-emerald-400 font-mono">Total {billingPoints.length} Point Tagihan</span>
+                </div>
+                <input
+                  type="text"
+                  value={periode}
+                  onChange={(e) => setPeriode(e.target.value)}
+                  placeholder="Contoh: 01 - 15 Feb 2026"
+                  required
+                  className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
+                />
+
+                <p className="text-[11px] text-emerald-300/90 bg-emerald-950/30 p-2 rounded-lg border border-emerald-800/40">
+                  ⚡ <strong>Rincian Point Tagihan:</strong> Masukkan item / point-point tagihan pokok (DPP). Sistem akan menjumlahkannya dan menambahkan PPN 11% secara otomatis.
+                </p>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {billingPoints.map((item, idx) => (
+                    <div key={item.id} className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-slate-800 font-bold text-[10px] text-slate-300 flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          placeholder="Deskripsi Point (e.g. Ground Handling / Cargo Storage / Service)"
+                          value={item.description}
+                          onChange={(e) => handleUpdateBillingPoint(item.id, 'description', e.target.value)}
+                          className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:border-emerald-500"
+                          required
+                        />
+                      </div>
+                      <div className="w-full sm:w-44">
+                        <input
+                          type="number"
+                          placeholder="Nominal Pokok (Rp)"
+                          value={item.amount || ''}
+                          onChange={(e) => handleUpdateBillingPoint(item.id, 'amount', Number(e.target.value))}
+                          className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-emerald-500"
+                          required
+                        />
+                      </div>
+                      {billingPoints.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBillingPoint(item.id)}
+                          className="p-2 rounded bg-rose-950/40 text-rose-400 hover:bg-rose-900 hover:text-white border border-rose-800/40 text-xs transition cursor-pointer self-end sm:self-auto"
+                          title="Hapus point ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={handleAddBillingPoint}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>+ Tambah Point Tagihan</span>
+                  </button>
+
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-medium">Subtotal Pokok DPP:</span>
+                    <span className="text-sm font-extrabold font-mono text-emerald-400">
+                      {formatRupiah(calculatedPointsDpp)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* View 3: Multi-Periode */}
+            {useMultiPeriode && (
               <div className="space-y-2.5">
                 <p className="text-[11px] text-amber-300/90 bg-amber-950/30 p-2 rounded-lg border border-amber-800/40">
-                  ⚡ <strong>Satu Tagihan Multi-Periode:</strong> Masukkan beberapa sub-periode dan nominal masing-masing. Total nominal tagihan akan dihitung otomatis.
+                  ⚡ <strong>Satu Tagihan Multi-Periode:</strong> Masukkan beberapa sub-periode dan nominal pokok masing-masing. Total nominal tagihan akan dihitung otomatis.
                 </p>
 
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
@@ -603,7 +818,7 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                         </div>
 
                         <div>
-                          <label className="block text-[10px] text-slate-400 mb-0.5 font-medium">Nominal (Rp)</label>
+                          <label className="block text-[10px] text-slate-400 mb-0.5 font-medium">Nominal Pokok DPP (Rp)</label>
                           <input
                             type="number"
                             placeholder="50000000"
@@ -640,7 +855,7 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                   </button>
 
                   <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block font-medium">Total Tagihan ({periodItems.length} Periode):</span>
+                    <span className="text-[10px] text-slate-400 block font-medium">Subtotal Pokok DPP ({periodItems.length} Periode):</span>
                     <span className="text-sm font-extrabold font-mono text-emerald-400">
                       {formatRupiah(calculatedTotalNominal)}
                     </span>
@@ -648,6 +863,144 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* PPN 11% & Jenis Potongan PPh HO Section */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                <Percent className="w-4 h-4 text-emerald-400" />
+                <span>Pengenaan PPN 11% & Potongan Pajak PPh (Patokan HO)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={includePpn}
+                    onChange={(e) => setIncludePpn(e.target.checked)}
+                    className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
+                  />
+                  <span className="text-emerald-300 font-semibold text-[11px]">PPN 11%</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Tax Type Options */}
+            <div>
+              <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
+                Pilih Tarif Potongan PPh (Dikenakan dari Dasar Pengenaan Pajak / DPP):
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTaxType('JASA')}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    taxType === 'JASA'
+                      ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
+                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-blue-300">Jasa</span>
+                    <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
+                      -2% (PPh 23)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Tagihan jasa operasional & kargo dipotong 2%
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTaxType('BUKAN_JASA')}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    taxType === 'BUKAN_JASA'
+                      ? 'bg-amber-950/60 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/50'
+                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-amber-300">Bukan Jasa</span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                      -10% (Sewa/Non-Jasa)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Sewa alat/gedung/non-jasa dipotong 10%
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTaxType('BEBAS_POTONGAN')}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    taxType === 'BEBAS_POTONGAN'
+                      ? 'bg-slate-800 border-slate-500 text-white shadow-sm ring-1 ring-slate-400/50'
+                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-300">Tanpa Potongan</span>
+                    <span className="px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 border border-slate-600 text-[10px] font-bold">
+                      0%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Pembayaran utuh 100% tanpa potongan PPh
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Calculation Display Box */}
+            {(() => {
+              let currentDpp = 0;
+              if (useBillingPoints) currentDpp = calculatedPointsDpp;
+              else if (useMultiPeriode) currentDpp = calculatedTotalNominal;
+              else currentDpp = Number(nominal) || 0;
+
+              const calc = calculateTaxAndNet(currentDpp, taxType, includePpn, false);
+              return (
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                    <span className="text-slate-400">1. Dasar Pengenaan Pajak / DPP (Pokok Point):</span>
+                    <span className="font-bold font-mono text-white">{formatRupiah(calc.dppAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <span>2. PPN ({calc.ppnRate}%):</span>
+                      <span className="text-[10px] text-emerald-400 font-mono">
+                        {calc.includePpn ? '(Dikenakan ke Tagihan)' : '(Non-PPN)'}
+                      </span>
+                    </span>
+                    <span className="font-bold font-mono text-emerald-400">+ {formatRupiah(calc.ppnNominal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80 bg-slate-950/40 p-1.5 rounded-lg">
+                    <span className="text-slate-300 font-semibold">3. Total Nilai Tagihan (Invoice / Faktur Bruto):</span>
+                    <span className="font-bold font-mono text-amber-300">{formatRupiah(calc.grossAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <span>4. Potongan PPh ({calc.rate}% dari DPP):</span>
+                      <span className="text-[10px] text-rose-400/80 font-mono">
+                        ({taxType === 'JASA' ? 'PPh 23 Jasa 2%' : taxType === 'BUKAN_JASA' ? 'PPh 10%' : '0%'})
+                      </span>
+                    </span>
+                    <span className="font-bold font-mono text-rose-400">- {formatRupiah(calc.deduction)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 bg-emerald-950/30 p-2 rounded-xl border border-emerald-800/40">
+                    <div>
+                      <span className="text-emerald-300 font-bold block text-xs">5. Total Patokan Pembayaran dari HO (Netto):</span>
+                      <span className="text-[10px] text-slate-400">Total Tagihan setelah PPN 11% & potongan PPh yang ditransfer HO</span>
+                    </div>
+                    <span className="font-extrabold font-mono text-base text-emerald-400">
+                      {formatRupiah(calc.netPaymentHo)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Operational Specific Inputs (IOM & APGNR) */}

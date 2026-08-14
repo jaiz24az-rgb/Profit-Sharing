@@ -104,10 +104,27 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
                     </div>
                   )}
 
-                  <div className="flex justify-between text-slate-300">
-                    <span className="text-slate-500">Total Nominal:</span>
-                    <span className="font-bold text-emerald-400">{formatRupiah(rec.nominal)}</span>
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span className="text-slate-500">Total Tagihan:</span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-amber-300 font-mono">{formatRupiah(rec.nominal)}</span>
+                      {rec.includePpn !== false && (
+                        <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60">
+                          +PPN 11%
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {rec.netPaymentHo && rec.netPaymentHo !== rec.nominal && (
+                    <div className="flex justify-between items-center text-slate-300 pt-1 border-t border-slate-800/80">
+                      <span className="text-slate-400 text-[10px] flex items-center gap-1">
+                        <span>Patokan HO:</span>
+                        <span className="text-[9px] text-rose-400 font-mono">(-{rec.taxRate || (rec.taxType === 'BUKAN_JASA' ? 10 : 2)}%)</span>
+                      </span>
+                      <span className="font-extrabold text-emerald-400 font-mono text-xs">{formatRupiah(rec.netPaymentHo)}</span>
+                    </div>
+                  )}
                   {rec.noIom && (
                     <div className="flex justify-between text-slate-300">
                       <span className="text-slate-500">No. IOM:</span>

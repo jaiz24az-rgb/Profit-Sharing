@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BillingRecord, PaymentInstallment } from '../types';
 import { formatRupiah } from '../utils/export';
+import { getRecordNetPaymentHo, getRecordDeduction, getTaxRate, calculateTaxAndNet } from '../utils/taxHelper';
 import { 
   X, 
   Plus, 
@@ -12,7 +13,8 @@ import {
   FileText, 
   AlertCircle,
   Building2,
-  Check
+  Check,
+  Percent
 } from 'lucide-react';
 
 interface SplitPaymentModalProps {
@@ -32,12 +34,17 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
 
   const installments = record.operationalDetail?.installments || [];
 
+  // Tax calculations
+  const targetPaymentHo = getRecordNetPaymentHo(record);
+  const deduction = getRecordDeduction(record);
+  const taxRate = getTaxRate(record.taxType || 'JASA');
+
   // Form state for adding new installment
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTerminName, setNewTerminName] = useState(`Termin ${installments.length + 1}`);
   const [newPaymentDate, setNewPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [newAmount, setNewAmount] = useState<number>(
-    installments.length === 0 ? Math.round(record.nominal / 2) : 0
+    installments.length === 0 ? Math.round(targetPaymentHo / 2) : 0
   );
   const [newStatus, setNewStatus] = useState<'Lunas' | 'Scheduled' | 'Pending'>('Lunas');
   const [newKeterangan, setNewKeterangan] = useState('');
@@ -48,8 +55,8 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
     .filter(i => i.status === 'Lunas')
     .reduce((sum, i) => sum + i.amount, 0);
 
-  const remainingAmount = Math.max(0, record.nominal - paidAmount);
-  const paidPercent = Math.min(100, Math.round((paidAmount / record.nominal) * 100));
+  const remainingAmount = Math.max(0, targetPaymentHo - paidAmount);
+  const paidPercent = targetPaymentHo > 0 ? Math.min(100, Math.round((paidAmount / targetPaymentHo) * 100)) : 100;
 
   const handleToggleInstallmentStatus = (installmentId: string) => {
     const updatedInstallments = installments.map(item => {
@@ -102,7 +109,7 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
       .filter(i => i.status === 'Lunas')
       .reduce((sum, i) => sum + i.amount, 0);
 
-    const isFullyPaid = newPaidAmount >= record.nominal;
+    const isFullyPaid = newPaidAmount >= targetPaymentHo;
     const latestPaidDate = updatedList
       .filter(i => i.status === 'Lunas')
       .map(i => i.paymentDate)
@@ -127,7 +134,7 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
         pembayaran_split: {
           completed: isFullyPaid,
           emailDate: latestPaidDate,
-          notes: `Terbayar ${formatRupiah(newPaidAmount)} / ${formatRupiah(record.nominal)} (${updatedList.length} Termin)`,
+          notes: `Terbayar ${formatRupiah(newPaidAmount)} / ${formatRupiah(targetPaymentHo)} (${updatedList.length} Termin)`,
         }
       },
       operationalDetail: {
@@ -155,7 +162,10 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
                 {record.airline}
               </span>
               <span className="text-xs font-semibold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60">
-                Vendor Operasional
+                {record.category === 'CARGO' ? 'Vendor Kargo' : 'Vendor Operasional'}
+              </span>
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                {record.taxType === 'BUKAN_JASA' ? 'Bukan Jasa (-10%)' : record.taxType === 'BEBAS_POTONGAN' ? 'Tanpa Potongan (0%)' : 'Jasa (-2%)'}
               </span>
             </div>
             <h3 className="text-lg font-bold text-white mt-1">
@@ -178,18 +188,22 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
           
           {/* Summary Financial Box */}
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div>
-                <span className="text-slate-400 block text-[11px]">Total Nominal Tagihan</span>
-                <span className="text-base font-bold text-white font-mono">{formatRupiah(record.nominal)}</span>
+                <span className="text-slate-400 block text-[11px]">Total Tagihan (Bruto)</span>
+                <span className="text-sm font-bold text-white font-mono">{formatRupiah(record.nominal)}</span>
               </div>
               <div>
-                <span className="text-slate-400 block text-[11px]">Sudah Dibayar (Lunas)</span>
-                <span className="text-base font-bold text-emerald-400 font-mono">{formatRupiah(paidAmount)}</span>
+                <span className="text-slate-400 block text-[11px]">Potongan Pajak ({taxRate}%)</span>
+                <span className="text-sm font-bold text-rose-400 font-mono">- {formatRupiah(deduction)}</span>
               </div>
               <div>
-                <span className="text-slate-400 block text-[11px]">Sisa Tagihan (Outstanding)</span>
-                <span className={`text-base font-bold font-mono ${remainingAmount === 0 ? 'text-slate-400' : 'text-amber-400'}`}>
+                <span className="text-slate-400 block text-[11px]">Total Bayar HO (Netto)</span>
+                <span className="text-sm font-extrabold text-emerald-400 font-mono">{formatRupiah(targetPaymentHo)}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Sisa Target Transfer HO</span>
+                <span className={`text-sm font-bold font-mono ${remainingAmount === 0 ? 'text-slate-400' : 'text-amber-400'}`}>
                   {formatRupiah(remainingAmount)}
                 </span>
               </div>
@@ -198,8 +212,8 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
             {/* Progress bar */}
             <div>
               <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-                <span>Status Pelunasan Termin</span>
-                <span className="font-bold text-emerald-400 font-mono">{paidPercent}% ( {formatRupiah(paidAmount)} )</span>
+                <span>Status Pelunasan Pembayaran HO</span>
+                <span className="font-bold text-emerald-400 font-mono">{paidPercent}% ( Terbayar {formatRupiah(paidAmount)} dari {formatRupiah(targetPaymentHo)} )</span>
               </div>
               <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
                 <div

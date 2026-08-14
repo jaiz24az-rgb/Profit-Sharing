@@ -7,6 +7,8 @@ export type Airline = 'PT Sriwijaya Air' | 'PT NAM Air';
 
 export type BillingCategory = 'CARGO' | 'OPERASIONAL';
 
+export type TaxType = 'JASA' | 'BUKAN_JASA' | 'BEBAS_POTONGAN';
+
 export type CargoVendor = 
   | 'PT 21 Express' 
   | 'PT Gatrans Mulia Indonesia' 
@@ -139,10 +141,19 @@ export interface ChecklistStageItem {
   completedAt?: string;
 }
 
+export interface BillingPointItem {
+  id: string;
+  description: string; // Deskripsi point / rincian pekerjaan / item tagihan
+  amount: number; // Nilai pokok (DPP) per point
+}
+
 export interface PeriodItem {
   id: string;
   periode: string; // e.g. "01 - 15 Feb 2026"
-  nominal: number; // e.g. 50000000
+  nominal: number; // e.g. 50000000 (Bruto / DPP)
+  taxType?: TaxType;
+  deductionNominal?: number;
+  netPaymentHo?: number;
   keterangan?: string; // e.g. "Periode I / Paruh Pertama"
 }
 
@@ -153,11 +164,20 @@ export interface BillingRecord {
   vendor: Vendor;
   periode: string; // e.g. "01 - 15 Jan 2026" or "Agustus 2026"
   periodItems?: PeriodItem[]; // Multi-periode & nominal breakdown in 1 tagihan
+  billingPoints?: BillingPointItem[]; // Point-point rincian tagihan pokok (DPP)
   noInvoice?: string;
   noIrf?: string;
   noIom?: string; // For Operational
   noApgnr?: string; // For Operational
-  nominal: number; // in IDR
+  dppAmount?: number; // Nilai Pokok / Dasar Pengenaan Pajak (DPP) dari point-point tagihan
+  includePpn?: boolean; // Apakah dikenakan PPN 11% (true by default)
+  ppnRate?: number; // 11 (%)
+  ppnNominal?: number; // DPP * 11%
+  nominal: number; // Total Nominal Tagihan (Bruto = DPP + PPN 11%) in IDR
+  taxType?: TaxType; // 'JASA' (potong 2%), 'BUKAN_JASA' (potong 10%), 'BEBAS_POTONGAN' (0%)
+  taxRate?: number; // 2, 10, or 0 (%)
+  deductionNominal?: number; // Nominal Potongan Pajak PPh (DPP * taxRate%)
+  netPaymentHo?: number; // Total Pembayaran dari HO (Patokan Netto = Total Tagihan - Potongan PPh)
   createdAt: string;
   updatedAt: string;
   stages: Record<string, ChecklistStageItem>;

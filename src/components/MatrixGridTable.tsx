@@ -270,12 +270,30 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                       {rec.noInvoice && (
                         <span className="text-[9px] text-blue-300 font-mono flex items-center gap-0.5 mt-0.5 truncate" title={`No. Invoice Vendor ke ${rec.airline}: ${rec.noInvoice}`}>
                           <Receipt className="w-2.5 h-2.5 text-blue-400 shrink-0" />
-                          <span className="truncate">Inv Vdr: {rec.noInvoice}</span>
+                          <span className="truncate">Inv: {rec.noInvoice}</span>
                         </span>
                       )}
-                      <span className="text-[10px] text-emerald-400 font-mono mt-0.5">
-                        {formatRupiah(rec.nominal)}
-                      </span>
+                      <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                        <span className="text-[10px] text-amber-300 font-mono font-bold" title="Total Nilai Tagihan (Invoice Bruto)">
+                          {formatRupiah(rec.nominal)}
+                        </span>
+                        {rec.includePpn !== false && (
+                          <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60" title="Termasuk PPN 11%">
+                            +PPN 11%
+                          </span>
+                        )}
+                        {rec.billingPoints && rec.billingPoints.length > 0 && (
+                          <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-blue-950 text-blue-300 border border-blue-700/60" title={`${rec.billingPoints.length} Point Tagihan Pokok (DPP)`}>
+                            {rec.billingPoints.length} Point
+                          </span>
+                        )}
+                      </div>
+                      {rec.netPaymentHo && rec.netPaymentHo !== rec.nominal && (
+                        <span className="text-[9px] text-emerald-400/90 font-mono mt-0.5 flex items-center gap-0.5" title="Patokan Pembayaran HO (Netto)">
+                          <span className="text-slate-400 text-[8px]">HO Net:</span> {formatRupiah(rec.netPaymentHo)}
+                          <span className="text-[8px] text-rose-400 font-sans">(-{rec.taxRate || (rec.taxType === 'BUKAN_JASA' ? 10 : 2)}%)</span>
+                        </span>
+                      )}
                     </div>
                   </td>
 

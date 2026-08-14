@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BillingRecord, STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem } from '../types';
+import { BillingRecord, STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType } from '../types';
 import { formatRupiah } from '../utils/export';
-import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt, ListPlus } from 'lucide-react';
+import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt, ListPlus, Percent, Calculator } from 'lucide-react';
 import { generateOfficialIRFNumber } from '../utils/irfHelper';
+import { calculateTaxAndNet, getTaxRate } from '../utils/taxHelper';
 
 interface RecordModalProps {
   record: BillingRecord | null;
@@ -70,7 +71,25 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData) {
-      onSave(formData);
+      const activeTaxType: TaxType = formData.taxType || 'JASA';
+      const isPpn = formData.includePpn !== undefined ? formData.includePpn : true;
+      const currentDpp = formData.dppAmount !== undefined ? formData.dppAmount : (formData.nominal || 0);
+      const taxCalc = calculateTaxAndNet(currentDpp, activeTaxType, isPpn, false);
+      
+      const updated: BillingRecord = {
+        ...formData,
+        dppAmount: taxCalc.dppAmount,
+        includePpn: taxCalc.includePpn,
+        ppnRate: taxCalc.ppnRate,
+        ppnNominal: taxCalc.ppnNominal,
+        nominal: taxCalc.grossAmount,
+        taxType: activeTaxType,
+        taxRate: taxCalc.rate,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
+      };
+
+      onSave(updated);
       onClose();
     }
   };
@@ -353,6 +372,199 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
               />
             </div>
+          </div>
+
+          {/* Tax Deduction & HO Payment Calculation Box */}
+          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                <Percent className="w-4 h-4 text-emerald-400" />
+                <span>Pengenaan PPN 11% & Potongan Pajak PPh (Patokan HO)</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">
+                <input
+                  type="checkbox"
+                  checked={formData.includePpn !== undefined ? formData.includePpn : true}
+                  onChange={(e) => {
+                    const isPpn = e.target.checked;
+                    setFormData(prev => {
+                      if (!prev) return null;
+                      const activeTax = prev.taxType || 'JASA';
+                      const currentDpp = prev.dppAmount !== undefined ? prev.dppAmount : (prev.nominal || 0);
+                      const nextCalc = calculateTaxAndNet(currentDpp, activeTax, isPpn, false);
+                      return {
+                        ...prev,
+                        includePpn: isPpn,
+                        dppAmount: nextCalc.dppAmount,
+                        ppnRate: nextCalc.ppnRate,
+                        ppnNominal: nextCalc.ppnNominal,
+                        nominal: nextCalc.grossAmount,
+                        deductionNominal: nextCalc.deduction,
+                        netPaymentHo: nextCalc.netPaymentHo,
+                      };
+                    });
+                  }}
+                  className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
+                />
+                <span className="text-emerald-300 font-semibold text-[11px]">PPN 11%</span>
+              </label>
+            </div>
+
+            {/* Tax Type Selector Buttons */}
+            <div>
+              <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
+                Pilih Tarif Potongan PPh (Dihitung dari Dasar Pengenaan Pajak / DPP):
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => {
+                    if (!prev) return null;
+                    const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+                    const currentDpp = prev.dppAmount !== undefined ? prev.dppAmount : (prev.nominal || 0);
+                    const nextCalc = calculateTaxAndNet(currentDpp, 'JASA', isPpn, false);
+                    return {
+                      ...prev,
+                      taxType: 'JASA',
+                      taxRate: nextCalc.rate,
+                      deductionNominal: nextCalc.deduction,
+                      netPaymentHo: nextCalc.netPaymentHo,
+                      nominal: nextCalc.grossAmount,
+                      ppnNominal: nextCalc.ppnNominal,
+                    };
+                  })}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    (formData.taxType || 'JASA') === 'JASA'
+                      ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
+                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-blue-300">Jasa</span>
+                    <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
+                      -2% (PPh 23)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Tagihan jasa operasional & kargo dipotong 2%
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => {
+                    if (!prev) return null;
+                    const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+                    const currentDpp = prev.dppAmount !== undefined ? prev.dppAmount : (prev.nominal || 0);
+                    const nextCalc = calculateTaxAndNet(currentDpp, 'BUKAN_JASA', isPpn, false);
+                    return {
+                      ...prev,
+                      taxType: 'BUKAN_JASA',
+                      taxRate: nextCalc.rate,
+                      deductionNominal: nextCalc.deduction,
+                      netPaymentHo: nextCalc.netPaymentHo,
+                      nominal: nextCalc.grossAmount,
+                      ppnNominal: nextCalc.ppnNominal,
+                    };
+                  })}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    formData.taxType === 'BUKAN_JASA'
+                      ? 'bg-amber-950/60 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/50'
+                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-amber-300">Bukan Jasa</span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                      -10% (Sewa/Non-Jasa)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Sewa alat/gedung/non-jasa dipotong 10%
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => {
+                    if (!prev) return null;
+                    const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+                    const currentDpp = prev.dppAmount !== undefined ? prev.dppAmount : (prev.nominal || 0);
+                    const nextCalc = calculateTaxAndNet(currentDpp, 'BEBAS_POTONGAN', isPpn, false);
+                    return {
+                      ...prev,
+                      taxType: 'BEBAS_POTONGAN',
+                      taxRate: nextCalc.rate,
+                      deductionNominal: nextCalc.deduction,
+                      netPaymentHo: nextCalc.netPaymentHo,
+                      nominal: nextCalc.grossAmount,
+                      ppnNominal: nextCalc.ppnNominal,
+                    };
+                  })}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    formData.taxType === 'BEBAS_POTONGAN'
+                      ? 'bg-slate-800 border-slate-500 text-white shadow-sm ring-1 ring-slate-400/50'
+                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-300">Tanpa Potongan</span>
+                    <span className="px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 border border-slate-600 text-[10px] font-bold">
+                      0%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Pembayaran utuh 100% tanpa potongan PPh
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Calculation Display Box */}
+            {(() => {
+              const isPpn = formData.includePpn !== undefined ? formData.includePpn : true;
+              const currentDpp = formData.dppAmount !== undefined ? formData.dppAmount : (formData.nominal || 0);
+              const calc = calculateTaxAndNet(currentDpp, formData.taxType || 'JASA', isPpn, false);
+              return (
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                    <span className="text-slate-400">1. Dasar Pengenaan Pajak / DPP (Pokok Point):</span>
+                    <span className="font-bold font-mono text-white">{formatRupiah(calc.dppAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <span>2. PPN ({calc.ppnRate}%):</span>
+                      <span className="text-[10px] text-emerald-400 font-mono">
+                        {calc.includePpn ? '(Dikenakan ke Tagihan)' : '(Non-PPN)'}
+                      </span>
+                    </span>
+                    <span className="font-bold font-mono text-emerald-400">+ {formatRupiah(calc.ppnNominal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80 bg-slate-950/40 p-1.5 rounded-lg">
+                    <span className="text-slate-300 font-semibold">3. Total Nilai Tagihan (Invoice / Faktur Bruto):</span>
+                    <span className="font-bold font-mono text-amber-300">{formatRupiah(calc.grossAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <span>4. Potongan PPh ({calc.rate}% dari DPP):</span>
+                      <span className="text-[10px] text-rose-400/80 font-mono">
+                        ({(formData.taxType || 'JASA') === 'JASA' ? 'PPh 23 Jasa 2%' : (formData.taxType === 'BUKAN_JASA') ? 'PPh 10%' : '0%'})
+                      </span>
+                    </span>
+                    <span className="font-bold font-mono text-rose-400">- {formatRupiah(calc.deduction)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 bg-emerald-950/30 p-2 rounded-xl border border-emerald-800/40">
+                    <div>
+                      <span className="text-emerald-300 font-bold block text-xs">5. Total Patokan Pembayaran dari HO (Netto):</span>
+                      <span className="text-[10px] text-slate-400">Total Tagihan setelah PPN 11% & potongan PPh yang ditransfer HO</span>
+                    </div>
+                    <span className="font-extrabold font-mono text-base text-emerald-400">
+                      {formatRupiah(calc.netPaymentHo)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* IRF Quick Launcher Banner */}
