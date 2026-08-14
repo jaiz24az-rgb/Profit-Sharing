@@ -305,28 +305,62 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     category: 'OPERASIONAL',
     id: 'REC-OP-2026-003',
     airline: 'PT Sriwijaya Air',
-    vendor: 'PT Parewa Asian Catering',
-    periode: 'Juli 2026',
-    noInvoice: 'INV/PAC-SUB/2026/07/102',
-    noIom: 'IOM/SJ-SUB/2026/08/002',
-    nominal: 120000000,
-    createdAt: '2026-08-05',
+    vendor: 'PT Gapura Angkasa',
+    periode: '01 - 15 Juli 2026',
+    noInvoice: 'INV/GAP-SUB/2026/07/042',
+    noIom: 'IOM/SJ-SUB/2026/07/028',
+    noApgnr: 'APGNR/HO/2026/08/064',
+    nominal: 67594163,
+    dppAmount: 60895642,
+    includePpn: true,
+    ppnRate: 11,
+    ppnNominal: 6698521,
+    taxType: 'JASA',
+    taxRate: 2,
+    deductionNominal: 1217913,
+    netPaymentHo: 66376250,
+    billingPoints: [
+      { id: 'bp-1', description: 'Ground Handling Services & Ramp Support', amount: 35500000 },
+      { id: 'bp-2', description: 'Aviobridge & Baggage Handling System', amount: 18250000 },
+      { id: 'bp-3', description: 'Marshalling & Pushback Facilities', amount: 7145642 },
+    ],
+    createdAt: '2026-07-16',
     updatedAt: '2026-08-08',
     overallStatus: 'In Progress',
-    catatanUtama: 'Tagihan inflight meals catering penerbangan Sriwijaya Air.',
+    catatanUtama: 'Rincian point tagihan jasa ground handling bandara (DPP Rp 60.895.642 + PPN 11% Rp 6.698.521 = Rp 67.594.163).',
     stages: {
-      iom: { completed: true, emailDate: '2026-08-05', notes: 'IOM terbit' },
-      email_ho: { completed: true, emailDate: '2026-08-08', notes: 'Terkirim ke Email HO' },
-      apgnr: { completed: false, emailDate: '', notes: 'Proses APGNR di HO' },
-      pembayaran_split: { completed: false, emailDate: '', notes: '' }
+      iom: { completed: true, emailDate: '2026-07-16', notes: 'IOM No. IOM/SJ-SUB/2026/07/028 terbit diajukan ke HO' },
+      email_ho: { completed: true, emailDate: '2026-07-18', notes: 'Terkirim ke Keuangan HO beserta rincian 3 point tagihan' },
+      apgnr: { completed: true, emailDate: '2026-07-22', notes: 'APGNR No. APGNR/HO/2026/08/064 disetujui HO' },
+      pembayaran_split: { completed: false, emailDate: '', notes: 'Menunggu transfer HO' }
     },
     operationalDetail: {
-      noIom: 'IOM/SJ-SUB/2026/08/002',
-      iomDate: '2026-08-05',
+      noIom: 'IOM/SJ-SUB/2026/07/028',
+      iomDate: '2026-07-16',
       iomCompleted: true,
-      emailHoDate: '2026-08-08',
+      emailHoDate: '2026-07-18',
       emailHoCompleted: true,
-      installments: []
+      noApgnr: 'APGNR/HO/2026/08/064',
+      apgnrDate: '2026-07-22',
+      apgnrCompleted: true,
+      installments: [
+        {
+          id: 'TRM-GAP-01',
+          terminName: 'Termin 1 (DP 50%)',
+          paymentDate: '2026-08-02',
+          amount: 33797081,
+          status: 'Scheduled',
+          keterangan: 'Jadwal transfer termin 1'
+        },
+        {
+          id: 'TRM-GAP-02',
+          terminName: 'Termin 2 (Pelunasan 50%)',
+          paymentDate: '2026-08-16',
+          amount: 33797082,
+          status: 'Pending',
+          keterangan: 'Jadwal transfer termin 2'
+        }
+      ]
     }
   },
   {

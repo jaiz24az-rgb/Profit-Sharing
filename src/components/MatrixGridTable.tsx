@@ -16,7 +16,11 @@ import {
   Maximize2,
   Minimize2,
   DollarSign,
-  Receipt
+  Receipt,
+  Calculator,
+  Percent,
+  ListOrdered,
+  X
 } from 'lucide-react';
 
 interface MatrixGridTableProps {
@@ -35,6 +39,7 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
   onOpenSplitModal,
 }) => {
   const [isFitScreen, setIsFitScreen] = useState<boolean>(true); // Default Fit 1 Layar
+  const [breakdownRecord, setBreakdownRecord] = useState<BillingRecord | null>(null);
 
   if (records.length === 0) {
     return (
@@ -278,25 +283,46 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                         </span>
                       )}
                       <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                        <span className="text-[10px] text-amber-300 font-mono font-bold" title="Total Nilai Tagihan (Invoice Bruto)">
-                          {formatRupiah(rec.nominal)}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setBreakdownRecord(rec)}
+                          className="text-[10px] text-amber-300 font-mono font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                          title="Klik untuk melihat rincian perhitungan DPP & PPN"
+                        >
+                          <span>{formatRupiah(rec.nominal)}</span>
+                        </button>
                         {rec.includePpn !== false && (
-                          <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60" title="Termasuk PPN 11%">
+                          <button
+                            type="button"
+                            onClick={() => setBreakdownRecord(rec)}
+                            className="px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 hover:bg-emerald-900 cursor-pointer"
+                            title="Klik untuk lihat kalkulasi PPN 11%"
+                          >
                             +PPN 11%
-                          </span>
+                          </button>
                         )}
                         {rec.billingPoints && rec.billingPoints.length > 0 && (
-                          <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-blue-950 text-blue-300 border border-blue-700/60" title={`${rec.billingPoints.length} Point Tagihan Pokok (DPP)`}>
-                            {rec.billingPoints.length} Point
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setBreakdownRecord(rec)}
+                            className="px-1 py-0.2 rounded text-[8px] font-bold bg-blue-950 text-blue-300 border border-blue-700/60 hover:bg-blue-900 cursor-pointer flex items-center gap-0.5"
+                            title={`${rec.billingPoints.length} Point Tagihan Pokok (DPP) - Klik untuk lihat rincian`}
+                          >
+                            <ListOrdered className="w-2 h-2 text-blue-400" />
+                            <span>{rec.billingPoints.length} Point</span>
+                          </button>
                         )}
                       </div>
                       {rec.netPaymentHo && rec.netPaymentHo !== rec.nominal && (
-                        <span className="text-[9px] text-emerald-400/90 font-mono mt-0.5 flex items-center gap-0.5" title="Patokan Pembayaran HO (Netto)">
+                        <button
+                          type="button"
+                          onClick={() => setBreakdownRecord(rec)}
+                          className="text-[9px] text-emerald-400/90 font-mono mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer text-left"
+                          title="Patokan Pembayaran HO (Netto) - Klik untuk lihat rincian"
+                        >
                           <span className="text-slate-400 text-[8px]">HO Net:</span> {formatRupiah(rec.netPaymentHo)}
                           <span className="text-[8px] text-rose-400 font-sans">(-{rec.taxRate || (rec.taxType === 'BUKAN_JASA' ? 10 : 2)}%)</span>
-                        </span>
+                        </button>
                       )}
                     </div>
                   </td>
@@ -484,12 +510,162 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
       <div className="p-3 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
         <div className="flex items-center space-x-2">
           <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>Tips: Klik tombol "Pembayaran Split HO" pada vendor operasional untuk mengelola pembayaran bertahap / termin.</span>
+          <span>Tips: Klik angka nominal atau badge untuk melihat detail rincian perhitungan DPP & PPN.</span>
         </div>
         <div className="text-slate-300 font-mono">
           Total Nominal Filtered: <span className="font-bold text-emerald-400">{formatRupiah(records.reduce((sum, r) => sum + r.nominal, 0))}</span>
         </div>
       </div>
+
+      {/* MODAL BREAKDOWN RINCIAN TAGIHAN & POINT POKOK (DPP) */}
+      {breakdownRecord && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                    {breakdownRecord.airline}
+                  </span>
+                  <span className="text-xs text-slate-400">•</span>
+                  <span className="text-xs font-semibold text-slate-200">{breakdownRecord.vendor}</span>
+                </div>
+                <h3 className="text-base font-bold text-white mt-1 flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-emerald-400" />
+                  <span>Rincian Perhitungan Tagihan & Point Pokok</span>
+                </h3>
+                <p className="text-xs text-slate-400">Periode: <strong className="text-slate-200">{breakdownRecord.periode}</strong></p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBreakdownRecord(null)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* List of Billing Points if exists */}
+            {breakdownRecord.billingPoints && breakdownRecord.billingPoints.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <ListOrdered className="w-4 h-4 text-blue-400" />
+                    <span>Rincian Point Tagihan Pokok (DPP):</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">{breakdownRecord.billingPoints.length} Point Item</span>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 max-h-44 overflow-y-auto space-y-1.5 divide-y divide-slate-800/60">
+                  {breakdownRecord.billingPoints.map((pt, idx) => (
+                    <div key={pt.id || idx} className="pt-1.5 first:pt-0 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-300 font-bold text-[9px] flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <span className="text-slate-200">{pt.description}</span>
+                      </div>
+                      <span className="font-mono text-emerald-400 font-semibold">{formatRupiah(pt.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : breakdownRecord.periodItems && breakdownRecord.periodItems.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-amber-400" />
+                    <span>Rincian Sub-Periode:</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">{breakdownRecord.periodItems.length} Sub-Periode</span>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 max-h-44 overflow-y-auto space-y-1.5 divide-y divide-slate-800/60">
+                  {breakdownRecord.periodItems.map((p, idx) => (
+                    <div key={p.id || idx} className="pt-1.5 first:pt-0 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-300 font-bold text-[9px] flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <span className="text-slate-200 font-mono">{p.periode}</span>
+                          {p.keterangan && <span className="text-slate-400 text-[10px] ml-1.5">({p.keterangan})</span>}
+                        </div>
+                      </div>
+                      <span className="font-mono text-amber-300 font-semibold">{formatRupiah(p.nominal)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Detailed Mathematical Calculation Box */}
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
+                <span className="text-slate-400">1. Dasar Pengenaan Pajak (DPP / Pokok Tagihan):</span>
+                <span className="font-mono font-bold text-white">
+                  {formatRupiah(breakdownRecord.dppAmount || (breakdownRecord.includePpn !== false ? Math.round(breakdownRecord.nominal / 1.11) : breakdownRecord.nominal))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <span>2. PPN 11%:</span>
+                  <span className="text-[10px] text-emerald-400 font-mono">
+                    {breakdownRecord.includePpn !== false ? '(Dikenakan)' : '(Non-PPN)'}
+                  </span>
+                </span>
+                <span className="font-mono font-bold text-emerald-400">
+                  + {formatRupiah(breakdownRecord.includePpn !== false ? (breakdownRecord.ppnNominal || (breakdownRecord.nominal - (breakdownRecord.dppAmount || Math.round(breakdownRecord.nominal / 1.11)))) : 0)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80 bg-slate-900/80 p-2 rounded-lg">
+                <span className="text-amber-200 font-bold">3. Total Tagihan (Nilai Invoice Bruto):</span>
+                <span className="font-mono font-bold text-amber-300 text-sm">
+                  {formatRupiah(breakdownRecord.nominal)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
+                <span className="text-rose-400 flex items-center gap-1">
+                  <span>4. Potongan Pajak PPh:</span>
+                  <span className="text-[10px] font-bold">
+                    ({breakdownRecord.taxRate || (breakdownRecord.taxType === 'BUKAN_JASA' ? 10 : 2)}% {breakdownRecord.taxType === 'BUKAN_JASA' ? 'Sewa/Non-Jasa' : 'PPh 23 Jasa'})
+                  </span>
+                </span>
+                <span className="font-mono font-bold text-rose-400">
+                  - {formatRupiah(breakdownRecord.deductionNominal || Math.round((breakdownRecord.dppAmount || Math.round(breakdownRecord.nominal / 1.11)) * ((breakdownRecord.taxRate || (breakdownRecord.taxType === 'BUKAN_JASA' ? 10 : 2)) / 100)))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-1 bg-emerald-950/40 p-2 rounded-lg border border-emerald-800/40">
+                <span className="text-emerald-300 font-bold">5. Patokan Pembayaran HO (Netto Transfer):</span>
+                <span className="font-mono font-bold text-emerald-300 text-sm">
+                  {formatRupiah(breakdownRecord.netPaymentHo || (breakdownRecord.nominal - (breakdownRecord.deductionNominal || 0)))}
+                </span>
+              </div>
+            </div>
+
+            {/* Footer action */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setBreakdownRecord(null)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = breakdownRecord;
+                  setBreakdownRecord(null);
+                  onSelectRecord(target);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit Rincian Ini di Modal</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

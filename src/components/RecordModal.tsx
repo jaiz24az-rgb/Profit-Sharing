@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BillingRecord, STAGES, OPERATIONAL_STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType } from '../types';
+import { BillingRecord, STAGES, OPERATIONAL_STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, BillingPointItem, TaxType } from '../types';
 import { formatRupiah } from '../utils/export';
-import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt, ListPlus, Percent, Calculator } from 'lucide-react';
+import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt, ListPlus, Percent, Calculator, ListOrdered } from 'lucide-react';
 import { generateOfficialIRFNumber } from '../utils/irfHelper';
 import { calculateTaxAndNet, getTaxRate } from '../utils/taxHelper';
 
@@ -70,6 +70,78 @@ export const RecordModal: React.FC<RecordModalProps> = ({
         nominal: newNominal,
         dppAmount: taxCalc.dppAmount,
         ppnNominal: taxCalc.ppnNominal,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
+      };
+    });
+  };
+
+  const handleAddBillingPoint = () => {
+    setFormData(prev => {
+      if (!prev) return null;
+      const current = prev.billingPoints || [];
+      const newPoint: BillingPointItem = {
+        id: String(Date.now()),
+        description: `Point Rincian #${current.length + 1}`,
+        amount: 0,
+      };
+      const nextPoints = [...current, newPoint];
+      const subtotalDpp = nextPoints.reduce((s, p) => s + (p.amount || 0), 0);
+      const activeTax = prev.taxType || 'JASA';
+      const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+      const taxCalc = calculateTaxAndNet(subtotalDpp, activeTax, isPpn, false);
+      return {
+        ...prev,
+        billingPoints: nextPoints,
+        dppAmount: taxCalc.dppAmount,
+        ppnNominal: taxCalc.ppnNominal,
+        nominal: taxCalc.grossAmount,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
+      };
+    });
+  };
+
+  const handleUpdateBillingPoint = (id: string, field: 'description' | 'amount', value: any) => {
+    setFormData(prev => {
+      if (!prev || !prev.billingPoints) return prev;
+      const nextPoints = prev.billingPoints.map(p => p.id === id ? { ...p, [field]: value } : p);
+      const subtotalDpp = nextPoints.reduce((s, p) => s + (p.amount || 0), 0);
+      const activeTax = prev.taxType || 'JASA';
+      const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+      const taxCalc = calculateTaxAndNet(subtotalDpp, activeTax, isPpn, false);
+      return {
+        ...prev,
+        billingPoints: nextPoints,
+        dppAmount: taxCalc.dppAmount,
+        ppnNominal: taxCalc.ppnNominal,
+        nominal: taxCalc.grossAmount,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
+      };
+    });
+  };
+
+  const handleRemoveBillingPoint = (id: string) => {
+    setFormData(prev => {
+      if (!prev || !prev.billingPoints) return prev;
+      const nextPoints = prev.billingPoints.filter(p => p.id !== id);
+      if (nextPoints.length === 0) {
+        return {
+          ...prev,
+          billingPoints: undefined,
+        };
+      }
+      const subtotalDpp = nextPoints.reduce((s, p) => s + (p.amount || 0), 0);
+      const activeTax = prev.taxType || 'JASA';
+      const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+      const taxCalc = calculateTaxAndNet(subtotalDpp, activeTax, isPpn, false);
+      return {
+        ...prev,
+        billingPoints: nextPoints,
+        dppAmount: taxCalc.dppAmount,
+        ppnNominal: taxCalc.ppnNominal,
+        nominal: taxCalc.grossAmount,
         deductionNominal: taxCalc.deduction,
         netPaymentHo: taxCalc.netPaymentHo,
       };
@@ -220,22 +292,77 @@ export const RecordModal: React.FC<RecordModalProps> = ({
             </div>
 
             {/* Data Periode & Nominal Section */}
-            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2.5">
-              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+            <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800 gap-2">
                 <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Rincian Periode & Nominal</span>
+                  <span>Rincian Periode & Nominal Tagihan</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(prev => {
-                      if (!prev) return null;
-                      if (prev.periodItems && prev.periodItems.length > 0) {
-                        // Switch off multi-periode
-                        return { ...prev, periodItems: undefined };
-                      } else {
-                        // Switch on multi-periode
+
+                {/* Mode Selector */}
+                <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => prev ? ({
+                        ...prev,
+                        billingPoints: undefined,
+                        periodItems: undefined
+                      }) : null);
+                    }}
+                    className={`px-2 py-1 rounded font-semibold transition cursor-pointer ${
+                      (!formData.billingPoints || formData.billingPoints.length === 0) &&
+                      (!formData.periodItems || formData.periodItems.length === 0)
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Nominal Langsung
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => {
+                        if (!prev) return null;
+                        if (prev.billingPoints && prev.billingPoints.length > 0) return prev;
+                        const initialDpp = prev.dppAmount || (prev.includePpn !== false ? Math.round(prev.nominal / 1.11) : prev.nominal);
+                        const initialPoints: BillingPointItem[] = [
+                          { id: '1', description: 'Pelayanan Jasa Pokok / Handling', amount: initialDpp || 0 },
+                          { id: '2', description: 'Fasilitas Tambahan / Point 2', amount: 0 },
+                        ];
+                        const subtotalDpp = initialPoints.reduce((s, p) => s + (p.amount || 0), 0);
+                        const activeTax = prev.taxType || 'JASA';
+                        const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+                        const taxCalc = calculateTaxAndNet(subtotalDpp, activeTax, isPpn, false);
+                        return {
+                          ...prev,
+                          billingPoints: initialPoints,
+                          periodItems: undefined,
+                          dppAmount: taxCalc.dppAmount,
+                          ppnNominal: taxCalc.ppnNominal,
+                          nominal: taxCalc.grossAmount,
+                          deductionNominal: taxCalc.deduction,
+                          netPaymentHo: taxCalc.netPaymentHo,
+                        };
+                      });
+                    }}
+                    className={`px-2 py-1 rounded font-semibold flex items-center gap-1 transition cursor-pointer ${
+                      formData.billingPoints && formData.billingPoints.length > 0
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ListOrdered className="w-3 h-3 text-emerald-300" />
+                    <span>Rincian Point (+)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => {
+                        if (!prev) return null;
+                        if (prev.periodItems && prev.periodItems.length > 0) return prev;
                         const initial: PeriodItem[] = [
                           { id: '1', periode: prev.periode || '01 - 15 Feb 2026', nominal: prev.nominal || 0, keterangan: 'Periode I' },
                           { id: '2', periode: '16 - 28 Feb 2026', nominal: 0, keterangan: 'Periode II' },
@@ -243,28 +370,31 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                         return {
                           ...prev,
                           periodItems: initial,
+                          billingPoints: undefined,
                         };
-                      }
-                    });
-                  }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
-                    formData.periodItems && formData.periodItems.length > 0
-                      ? 'bg-amber-950/60 text-amber-300 border-amber-800/80'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                  }`}
-                >
-                  <ListPlus className="w-3 h-3 text-amber-400" />
-                  <span>{formData.periodItems && formData.periodItems.length > 0 ? 'Mode Multi-Periode Aktif' : '+ Aktifkan Multi-Periode'}</span>
-                </button>
+                      });
+                    }}
+                    className={`px-2 py-1 rounded font-semibold flex items-center gap-1 transition cursor-pointer ${
+                      formData.periodItems && formData.periodItems.length > 0
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ListPlus className="w-3 h-3 text-amber-300" />
+                    <span>Multi-Periode (+)</span>
+                  </button>
+                </div>
               </div>
 
-              {(!formData.periodItems || formData.periodItems.length === 0) ? (
+              {/* View 1: Standard Direct Input */}
+              {(!formData.billingPoints || formData.billingPoints.length === 0) &&
+               (!formData.periodItems || formData.periodItems.length === 0) && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-400 text-[10px] mb-1">Data Periode</label>
+                    <label className="block text-slate-400 text-[10px] mb-1 font-medium">Data Periode</label>
                     <input
                       type="text"
-                      placeholder="Contoh: 01 - 15 Jan 2026"
+                      placeholder="Contoh: 01 - 15 Feb 2026"
                       value={formData.periode}
                       onChange={(e) => setFormData(prev => prev ? ({ ...prev, periode: e.target.value }) : null)}
                       className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500"
@@ -272,7 +402,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 text-[10px] mb-1">Nominal Tagihan (Rp)</label>
+                    <label className="block text-slate-400 text-[10px] mb-1 font-medium">Total Nominal Tagihan Bruto (Rp)</label>
                     <input
                       type="number"
                       value={formData.nominal}
@@ -281,7 +411,81 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                     />
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {/* View 2: Rincian Point Tagihan Pokok (DPP) */}
+              {formData.billingPoints && formData.billingPoints.length > 0 && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-slate-400 text-[10px] mb-1 font-medium">Data Periode Tagihan</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: 01 - 15 Feb 2026"
+                      value={formData.periode}
+                      onChange={(e) => setFormData(prev => prev ? ({ ...prev, periode: e.target.value }) : null)}
+                      className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <p className="text-[10px] text-emerald-300 bg-emerald-950/40 p-2 rounded-lg border border-emerald-800/40">
+                    ⚡ <strong>Rincian Point Tagihan Pokok (DPP):</strong> Masukkan rincian setiap point pekerjaan / jasa. Nilai di bawah adalah DPP (sebelum PPN 11%).
+                  </p>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {formData.billingPoints.map((pt, idx) => (
+                      <div key={pt.id || idx} className="p-2 bg-slate-950 rounded-lg border border-slate-800 flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Deskripsi Point (e.g. Ground Handling / Aviobridge)"
+                          value={pt.description}
+                          onChange={(e) => handleUpdateBillingPoint(pt.id, 'description', e.target.value)}
+                          className="flex-1 p-1.5 bg-slate-900 border border-slate-700 rounded text-white text-xs focus:border-emerald-500"
+                        />
+                        <input
+                          type="number"
+                          placeholder="DPP (Rp)"
+                          value={pt.amount || ''}
+                          onChange={(e) => handleUpdateBillingPoint(pt.id, 'amount', Number(e.target.value))}
+                          className="w-32 sm:w-40 p-1.5 bg-slate-900 border border-slate-700 rounded text-white font-mono text-xs focus:border-emerald-500"
+                        />
+                        {formData.billingPoints && formData.billingPoints.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBillingPoint(pt.id)}
+                            className="p-1.5 rounded bg-rose-950/40 text-rose-400 hover:bg-rose-900 hover:text-white border border-rose-800/40 text-xs transition cursor-pointer"
+                            title="Hapus Point"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={handleAddBillingPoint}
+                      className="px-2.5 py-1 bg-emerald-950 text-emerald-300 hover:bg-emerald-900 rounded-lg border border-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ Tambah Point Tagihan</span>
+                    </button>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400">
+                        Subtotal DPP: <span className="font-mono text-emerald-400 font-bold">{formatRupiah(formData.dppAmount || 0)}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* View 3: Multi-Periode */}
+              {formData.periodItems && formData.periodItems.length > 0 && (
                 <div className="space-y-2">
                   <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                     {formData.periodItems.map((item, idx) => (
@@ -304,7 +508,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                                 };
                               });
                             }}
-                            className="text-red-400 hover:text-red-300 text-[9px] flex items-center gap-0.5"
+                            className="text-red-400 hover:text-red-300 text-[9px] flex items-center gap-0.5 cursor-pointer"
                           >
                             <Trash2 className="w-2.5 h-2.5" /> Hapus
                           </button>
