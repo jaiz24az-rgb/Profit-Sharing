@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BillingRecord, STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType } from '../types';
+import { BillingRecord, STAGES, OPERATIONAL_STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType } from '../types';
 import { formatRupiah } from '../utils/export';
 import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt, ListPlus, Percent, Calculator } from 'lucide-react';
 import { generateOfficialIRFNumber } from '../utils/irfHelper';
@@ -55,9 +55,28 @@ export const RecordModal: React.FC<RecordModalProps> = ({
       const newStages = { ...prev.stages, [stageKey]: updatedStage };
 
       let overallStatus = prev.overallStatus;
-      if (newStages.laporan_ho.completed) overallStatus = 'Completed HO';
-      else if (newStages.pembayaran.completed) overallStatus = 'Paid';
-      else overallStatus = 'In Progress';
+      if (prev.category === 'OPERASIONAL') {
+        const installments = prev.operationalDetail?.installments || [];
+        const paidAmount = installments
+          .filter((i) => i.status === 'Lunas')
+          .reduce((s, i) => s + (i.amount || 0), 0);
+
+        if (newStages.pembayaran_split?.completed || (paidAmount >= (prev.nominal || 0) && (prev.nominal || 0) > 0)) {
+          overallStatus = 'Completed HO';
+        } else if (paidAmount > 0 || newStages.apgnr?.completed) {
+          overallStatus = 'In Progress';
+        } else {
+          overallStatus = 'In Progress';
+        }
+      } else {
+        if (newStages.laporan_ho?.completed) {
+          overallStatus = 'Completed HO';
+        } else if (newStages.pembayaran?.completed) {
+          overallStatus = 'Paid';
+        } else {
+          overallStatus = 'In Progress';
+        }
+      }
 
       return {
         ...prev,
@@ -590,15 +609,19 @@ export const RecordModal: React.FC<RecordModalProps> = ({
             )}
           </div>
 
-          {/* 8 Stages Checklist Checklist Steps */}
+          {/* Stages Checklist Steps */}
           <div>
             <h4 className="font-bold text-white mb-3 text-sm flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Daftar 8 Tahapan Checklist Penagihan</span>
+              <span>
+                {formData.category === 'OPERASIONAL'
+                  ? 'Daftar 4 Tahapan Checklist Penagihan Operasional'
+                  : 'Daftar 8 Tahapan Checklist Penagihan Cargo'}
+              </span>
             </h4>
 
             <div className="space-y-3">
-              {STAGES.map((stage) => {
+              {(formData.category === 'OPERASIONAL' ? OPERATIONAL_STAGES : STAGES).map((stage) => {
                 const st = formData.stages[stage.key] || { completed: false, emailDate: '' };
                 return (
                   <div 

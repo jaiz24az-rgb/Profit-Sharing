@@ -60,14 +60,29 @@ export function createUpdatedRecordStage(
         [stageKey]: newStage,
       };
 
-      // Recalculate overall status
+      // Recalculate overall status safely
       let overallStatus = rec.overallStatus;
-      if (newStages.laporan_ho.completed) {
-        overallStatus = 'Completed HO';
-      } else if (newStages.pembayaran.completed) {
-        overallStatus = 'Paid';
+      if (rec.category === 'OPERASIONAL') {
+        const installments = rec.operationalDetail?.installments || [];
+        const paidAmount = installments
+          .filter((i) => i.status === 'Lunas')
+          .reduce((s, i) => s + (i.amount || 0), 0);
+
+        if (newStages.pembayaran_split?.completed || (paidAmount >= (rec.nominal || 0) && (rec.nominal || 0) > 0)) {
+          overallStatus = 'Completed HO';
+        } else if (paidAmount > 0 || newStages.apgnr?.completed) {
+          overallStatus = 'In Progress';
+        } else {
+          overallStatus = 'In Progress';
+        }
       } else {
-        overallStatus = 'In Progress';
+        if (newStages.laporan_ho?.completed) {
+          overallStatus = 'Completed HO';
+        } else if (newStages.pembayaran?.completed) {
+          overallStatus = 'Paid';
+        } else {
+          overallStatus = 'In Progress';
+        }
       }
 
       updatedRecord = {

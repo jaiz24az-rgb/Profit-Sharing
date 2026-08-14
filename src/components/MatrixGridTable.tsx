@@ -34,7 +34,6 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
   onOpenIRFModal,
   onOpenSplitModal,
 }) => {
-  const [editingDate, setEditingDate] = useState<{ recordId: string; stageKey: StageKey } | null>(null);
   const [isFitScreen, setIsFitScreen] = useState<boolean>(true); // Default Fit 1 Layar
 
   if (records.length === 0) {
@@ -318,7 +317,6 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                   {/* STAGES COLUMNS */}
                   {rowStages.map((stage) => {
                     const stageData = rec.stages[stage.key] || { completed: false, emailDate: '' };
-                    const isEditing = editingDate?.recordId === rec.id && editingDate?.stageKey === stage.key;
 
                     // SPECIAL HANDLING FOR OPERATIONAL SPLIT PAYMENT STAGE
                     if (stage.key === 'pembayaran_split') {
@@ -367,13 +365,14 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                           <td className="px-1 py-1.5 text-center border-r border-slate-800/80">
                             <div className="flex flex-col items-center justify-center gap-1">
                               <button
+                                type="button"
                                 onClick={() => onToggleStage(rec.id, stage.key, !stageData.completed)}
                                 className={`inline-flex items-center justify-center p-1 rounded border transition-all cursor-pointer ${
                                   stageData.completed
                                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/30'
                                     : 'bg-slate-800 text-slate-500 border-slate-700 hover:bg-slate-700 hover:text-slate-300'
                                 }`}
-                                title={stageData.completed ? `${stage.label}: Selesai` : `Klik selesaikan ${stage.label}`}
+                                title={stageData.completed ? `${stage.label}: Selesai (Klik batalkan)` : `Klik selesaikan ${stage.label}`}
                               >
                                 {stageData.completed ? (
                                   <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -382,78 +381,66 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                                 )}
                               </button>
 
-                              {isEditing ? (
+                              <div className="relative group/date inline-flex items-center justify-center">
                                 <input
                                   type="date"
-                                  autoFocus
-                                  value={stageData.emailDate || new Date().toISOString().slice(0, 10)}
+                                  value={stageData.emailDate || ''}
                                   onChange={(e) => {
                                     onToggleStage(rec.id, stage.key, stageData.completed, e.target.value);
-                                    setEditingDate(null);
                                   }}
-                                  onBlur={() => setEditingDate(null)}
-                                  className="w-full px-0.5 py-0 bg-slate-950 border border-blue-500 rounded text-[9px] text-white focus:outline-none"
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                  title="Klik untuk memilih / ubah tanggal"
                                 />
-                              ) : (
-                                <button
-                                  onClick={() => setEditingDate({ recordId: rec.id, stageKey: stage.key })}
-                                  title="Klik untuk ubah tanggal"
-                                  className={`text-[9px] px-1 py-0.2 rounded transition cursor-pointer hover:bg-slate-700/60 font-mono truncate max-w-full ${
-                                    stageData.emailDate 
-                                      ? 'text-slate-300 hover:text-white' 
-                                      : 'text-slate-600 italic'
-                                  }`}
-                                >
-                                  {stageData.emailDate ? stageData.emailDate.replace('2026-', '') : '-tgl-'}
-                                </button>
-                              )}
+                                <span className={`text-[9px] px-1 py-0.2 rounded border transition flex items-center gap-0.5 group-hover/date:border-blue-500/60 font-mono truncate max-w-full ${
+                                  stageData.emailDate 
+                                    ? 'bg-slate-800/90 text-slate-300 border-slate-700' 
+                                    : 'bg-slate-900/60 text-slate-500 border-dashed border-slate-800 italic group-hover/date:text-slate-300'
+                                }`}>
+                                  <span>{stageData.emailDate ? stageData.emailDate.replace('2026-', '') : '-tgl-'}</span>
+                                </span>
+                              </div>
                             </div>
                           </td>
                         ) : (
                           /* SCROLL LEBAR DOUBLE CELL */
                           <>
                             <td className="px-2 py-2 text-center border-r border-slate-800/60 bg-slate-900/30">
-                              {isEditing ? (
+                              <div className="relative group/date inline-flex items-center justify-center">
                                 <input
                                   type="date"
-                                  autoFocus
-                                  value={stageData.emailDate || new Date().toISOString().slice(0, 10)}
+                                  value={stageData.emailDate || ''}
                                   onChange={(e) => {
                                     onToggleStage(rec.id, stage.key, stageData.completed, e.target.value);
-                                    setEditingDate(null);
                                   }}
-                                  onBlur={() => setEditingDate(null)}
-                                  className="w-full px-1 py-0.5 bg-slate-950 border border-blue-500 rounded text-[10px] text-white focus:outline-none"
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                  title="Klik untuk memilih / ubah tanggal"
                                 />
-                              ) : (
-                                <button
-                                  onClick={() => setEditingDate({ recordId: rec.id, stageKey: stage.key })}
-                                  title="Klik untuk ubah tanggal"
-                                  className={`text-[11px] px-1.5 py-0.5 rounded transition cursor-pointer hover:bg-slate-700/50 ${
-                                    stageData.emailDate 
-                                      ? 'font-mono text-slate-300 hover:text-white' 
-                                      : 'text-slate-500 italic'
-                                  }`}
-                                >
-                                  {stageData.emailDate || '- set tgl -'}
-                                </button>
-                              )}
+                                <span className={`text-[11px] px-2 py-1 rounded-lg border transition flex items-center gap-1.5 group-hover/date:border-blue-500/80 ${
+                                  stageData.emailDate 
+                                    ? 'bg-slate-800/90 text-slate-200 border-slate-700/80 font-mono shadow-sm' 
+                                    : 'bg-slate-900/60 text-slate-500 border-dashed border-slate-700/70 italic group-hover/date:text-slate-300'
+                                }`}>
+                                  <Calendar className="w-3 h-3 text-blue-400 shrink-0" />
+                                  <span className="truncate max-w-[90px]">{stageData.emailDate || '- set tgl -'}</span>
+                                </span>
+                              </div>
                             </td>
 
                             <td className="px-2 py-2 text-center border-r border-slate-800">
                               <button
+                                type="button"
                                 onClick={() => onToggleStage(rec.id, stage.key, !stageData.completed)}
-                                className={`inline-flex items-center justify-center p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                className={`inline-flex items-center justify-center p-2 rounded-lg border transition-all cursor-pointer ${
                                   stageData.completed
-                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30'
+                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30 shadow-sm shadow-emerald-950'
                                     : 'bg-slate-800/80 text-slate-500 border-slate-700 hover:bg-slate-700/60 hover:text-slate-300'
                                 }`}
-                                title={stageData.completed ? `Tahap ${stage.shortLabel} Selesai` : `Klik untuk selesaikan ${stage.shortLabel}`}
+                                title={stageData.completed ? `Tahap ${stage.shortLabel} Selesai (Klik batalkan)` : `Klik untuk selesaikan ${stage.shortLabel}`}
                               >
                                 {stageData.completed ? (
                                   <Check className="w-4 h-4 stroke-[3]" />
                                 ) : (
-                                  <span className="w-4 h-4 rounded border border-slate-600 block"></span>
+                                  <span className="w-4 h-4 rounded border-2 border-slate-600 block"></span>
                                 )}
                               </button>
                             </td>
