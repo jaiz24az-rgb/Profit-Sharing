@@ -12,6 +12,7 @@ interface RecordModalProps {
   onSave: (updatedRecord: BillingRecord) => void;
   onDelete: (recordId: string) => void;
   onOpenIRFModal?: (record: BillingRecord) => void;
+  onOpenSplitModal?: (record: BillingRecord) => void;
   vendorOptions?: string[];
   onOpenAddVendorModal?: () => void;
 }
@@ -23,6 +24,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   onSave,
   onDelete,
   onOpenIRFModal,
+  onOpenSplitModal,
   vendorOptions,
   onOpenAddVendorModal,
 }) => {
@@ -38,6 +40,40 @@ export const RecordModal: React.FC<RecordModalProps> = ({
     if (!formData) return;
     const officialNo = generateOfficialIRFNumber(formData.airline, 2, 'SUB', new Date());
     setFormData({ ...formData, noIrf: officialNo });
+  };
+
+  const handleAutoGenerateIOM = () => {
+    if (!formData) return;
+    const prefix = formData.airline === 'PT Sriwijaya Air' ? 'IOM/SJ-SUB' : 'IOM/NAM-SUB';
+    const year = new Date().getFullYear();
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    const newIom = `${prefix}/${year}/${randomNum}`;
+    setFormData(prev => prev ? ({
+      ...prev,
+      noIom: newIom,
+      operationalDetail: {
+        ...(prev.operationalDetail || { apgnrCompleted: false, installments: [] }),
+        noIom: newIom,
+        iomDate: prev.operationalDetail?.iomDate || new Date().toISOString().slice(0, 10),
+      }
+    }) : null);
+  };
+
+  const handleNominalChange = (newNominal: number) => {
+    setFormData(prev => {
+      if (!prev) return null;
+      const activeTaxType: TaxType = prev.taxType || 'JASA';
+      const isPpn = prev.includePpn !== undefined ? prev.includePpn : true;
+      const taxCalc = calculateTaxAndNet(newNominal, activeTaxType, isPpn, true);
+      return {
+        ...prev,
+        nominal: newNominal,
+        dppAmount: taxCalc.dppAmount,
+        ppnNominal: taxCalc.ppnNominal,
+        deductionNominal: taxCalc.deduction,
+        netPaymentHo: taxCalc.netPaymentHo,
+      };
+    });
   };
 
   const handleStageChange = (stageKey: StageKey, field: 'completed' | 'emailDate' | 'notes', value: any) => {
@@ -92,8 +128,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
     if (formData) {
       const activeTaxType: TaxType = formData.taxType || 'JASA';
       const isPpn = formData.includePpn !== undefined ? formData.includePpn : true;
-      const currentDpp = formData.dppAmount !== undefined ? formData.dppAmount : (formData.nominal || 0);
-      const taxCalc = calculateTaxAndNet(currentDpp, activeTaxType, isPpn, false);
+      const currentGross = formData.nominal || 0;
+      const taxCalc = calculateTaxAndNet(currentGross, activeTaxType, isPpn, true);
       
       const updated: BillingRecord = {
         ...formData,
@@ -101,11 +137,12 @@ export const RecordModal: React.FC<RecordModalProps> = ({
         includePpn: taxCalc.includePpn,
         ppnRate: taxCalc.ppnRate,
         ppnNominal: taxCalc.ppnNominal,
-        nominal: taxCalc.grossAmount,
+        nominal: currentGross,
         taxType: activeTaxType,
         taxRate: taxCalc.rate,
         deductionNominal: taxCalc.deduction,
         netPaymentHo: taxCalc.netPaymentHo,
+        updatedAt: new Date().toISOString().slice(0, 10),
       };
 
       onSave(updated);
@@ -239,7 +276,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                     <input
                       type="number"
                       value={formData.nominal}
-                      onChange={(e) => setFormData(prev => prev ? ({ ...prev, nominal: Number(e.target.value) }) : null)}
+                      onChange={(e) => handleNominalChange(Number(e.target.value))}
                       className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500"
                     />
                   </div>
@@ -372,25 +409,79 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               />
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-slate-400">No. IRF (Format Resmi)</label>
-                <button
-                  type="button"
-                  onClick={handleAutoGenerateIRF}
-                  className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
-                >
-                  <RefreshCw className="w-2.5 h-2.5" /> Auto Format
-                </button>
+            {formData.category === 'OPERASIONAL' ? (
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-amber-300 font-semibold flex items-center gap-1">
+                      <span>No. IOM (Memo Internal HO)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAutoGenerateIOM}
+                      className="text-[10px] text-amber-400 hover:underline flex items-center gap-0.5"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" /> Auto IOM
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.noIom || ''}
+                    onChange={(e) => setFormData(prev => prev ? ({
+                      ...prev,
+                      noIom: e.target.value,
+                      operationalDetail: {
+                        ...(prev.operationalDetail || { apgnrCompleted: false, installments: [] }),
+                        noIom: e.target.value
+                      }
+                    }) : null)}
+                    placeholder="IOM/SJ-SUB/2026/xxx"
+                    className="w-full p-2 bg-slate-900 border border-amber-500/50 rounded-lg text-amber-300 font-mono focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    No. APGNR (Sistem HO - Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.noApgnr || ''}
+                    onChange={(e) => setFormData(prev => prev ? ({
+                      ...prev,
+                      noApgnr: e.target.value,
+                      operationalDetail: {
+                        ...(prev.operationalDetail || { apgnrCompleted: !!e.target.value, installments: [] }),
+                        noApgnr: e.target.value,
+                        apgnrCompleted: !!e.target.value
+                      }
+                    }) : null)}
+                    placeholder="Contoh: 8100029302"
+                    className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
+                  />
+                </div>
               </div>
-              <input
-                type="text"
-                value={formData.noIrf || ''}
-                onChange={(e) => setFormData(prev => prev ? ({ ...prev, noIrf: e.target.value }) : null)}
-                placeholder="002/SJ-CRG/SUB/VII/2026"
-                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
-              />
-            </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-400">No. IRF (Format Resmi)</label>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateIRF}
+                    className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" /> Auto Format
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={formData.noIrf || ''}
+                  onChange={(e) => setFormData(prev => prev ? ({ ...prev, noIrf: e.target.value }) : null)}
+                  placeholder="002/SJ-CRG/SUB/VII/2026"
+                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
+                />
+              </div>
+            )}
           </div>
 
           {/* Tax Deduction & HO Payment Calculation Box */}
@@ -586,28 +677,58 @@ export const RecordModal: React.FC<RecordModalProps> = ({
             })()}
           </div>
 
-          {/* IRF Quick Launcher Banner */}
-          <div className="bg-blue-950/50 border border-blue-800/60 p-3 rounded-xl flex items-center justify-between">
-            <div>
-              <p className="font-bold text-white text-xs flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-blue-400" />
-                <span>Dokumen Formulir Invoicing Request Form (IRF)</span>
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Cetak atau edit rincian IRF resmi untuk diajukan ke HO
-              </p>
+          {/* IRF Quick Launcher Banner (Cargo Only) */}
+          {formData.category === 'CARGO' && (
+            <div className="bg-blue-950/50 border border-blue-800/60 p-3 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="font-bold text-white text-xs flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-blue-400" />
+                  <span>Dokumen Formulir Invoicing Request Form (IRF)</span>
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Cetak atau edit rincian IRF resmi untuk diajukan ke HO
+                </p>
+              </div>
+              {onOpenIRFModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenIRFModal(formData)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow cursor-pointer"
+                >
+                  <span>Buka Form IRF</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-            {onOpenIRFModal && (
-              <button
-                type="button"
-                onClick={() => onOpenIRFModal(formData)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow"
-              >
-                <span>Buka Form IRF</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          )}
+
+          {/* Operational Split Payment Quick Launcher Banner */}
+          {formData.category === 'OPERASIONAL' && (
+            <div className="bg-amber-950/40 border border-amber-800/60 p-3 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="font-bold text-amber-300 text-xs flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-amber-400" />
+                  <span>Pembayaran Bertahap / Split HQ Operasional</span>
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Kelola termin pencairan dana bertahap dari Head Office (HO)
+                </p>
+              </div>
+              {onOpenSplitModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSplitModal(formData);
+                  }}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1 transition shadow cursor-pointer"
+                >
+                  <span>Atur Split HO</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Stages Checklist Steps */}
           <div>

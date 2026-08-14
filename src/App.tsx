@@ -299,12 +299,8 @@ export default function App() {
             records={filteredRecords}
             onToggleStage={handleToggleStage}
             onSelectRecord={(rec) => {
-              if (rec.category === 'OPERASIONAL') {
-                handleOpenSplitModal(rec);
-              } else {
-                setSelectedRecord(rec);
-                setIsRecordModalOpen(true);
-              }
+              setSelectedRecord(rec);
+              setIsRecordModalOpen(true);
             }}
             onOpenIRFModal={handleOpenIRFModal}
             onOpenSplitModal={handleOpenSplitModal}
@@ -316,12 +312,8 @@ export default function App() {
             records={filteredRecords}
             onToggleStage={handleToggleStage}
             onSelectRecord={(rec) => {
-              if (rec.category === 'OPERASIONAL') {
-                handleOpenSplitModal(rec);
-              } else {
-                setSelectedRecord(rec);
-                setIsRecordModalOpen(true);
-              }
+              setSelectedRecord(rec);
+              setIsRecordModalOpen(true);
             }}
             onOpenIRFModal={handleOpenIRFModal}
             onOpenSplitModal={handleOpenSplitModal}
@@ -345,6 +337,7 @@ export default function App() {
         onSave={handleSaveRecord}
         onDelete={handleDeleteRecord}
         onOpenIRFModal={handleOpenIRFModal}
+        onOpenSplitModal={handleOpenSplitModal}
         vendorOptions={selectedRecord?.category === 'OPERASIONAL' ? allOperationalVendors : allCargoVendors}
         onOpenAddVendorModal={() => setIsAddVendorModalOpen(true)}
       />
@@ -360,6 +353,10 @@ export default function App() {
           onSaveRecord={(updated) => {
             handleSaveRecord(updated);
             setSplitRecord(updated);
+          }}
+          onOpenRecordModal={(rec) => {
+            setSelectedRecord(rec);
+            setIsRecordModalOpen(true);
           }}
         />
       )}

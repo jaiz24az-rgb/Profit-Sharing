@@ -247,9 +247,14 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                           <span className="truncate">{rec.noIrf}</span>
                         </button>
                       ) : rec.noIom ? (
-                        <span className="text-[9px] text-amber-300 font-mono truncate bg-amber-950/40 px-1 py-0.5 rounded border border-amber-800/50 w-fit">
+                        <button
+                          type="button"
+                          onClick={() => onSelectRecord(rec)}
+                          title="Klik untuk edit No. IOM & informasi tagihan"
+                          className="text-[9px] text-amber-300 hover:text-amber-200 font-mono truncate bg-amber-950/50 hover:bg-amber-900/60 px-1.5 py-0.5 rounded border border-amber-800/60 w-fit cursor-pointer transition text-left"
+                        >
                           IOM: {rec.noIom}
-                        </span>
+                        </button>
                       ) : (
                         rec.noInvoice && (
                           <span className="text-[9px] text-slate-400 font-mono truncate">
@@ -299,17 +304,24 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                   {/* Data Periode */}
                   <td className="px-1 py-2 border-r border-slate-800 text-slate-300 text-center">
                     <div className="flex flex-col items-center justify-center gap-1">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-800/90 border border-slate-700/80 text-[10px] font-mono text-slate-200 block truncate max-w-[130px]" title={rec.periode}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectRecord(rec)}
+                        title="Klik untuk edit Periode / Rincian Nominal"
+                        className="px-1.5 py-0.5 rounded bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/80 hover:border-blue-500/60 text-[10px] font-mono text-slate-200 block truncate max-w-[130px] cursor-pointer transition"
+                      >
                         {rec.periode}
-                      </span>
+                      </button>
                       {rec.periodItems && rec.periodItems.length > 0 && (
-                        <div 
-                          className="px-1.5 py-0.5 rounded-full bg-amber-950/80 border border-amber-700/60 text-[9px] font-bold text-amber-300 flex items-center gap-1 cursor-help group relative"
+                        <button
+                          type="button"
+                          onClick={() => onSelectRecord(rec)}
+                          className="px-1.5 py-0.5 rounded-full bg-amber-950/80 hover:bg-amber-900/80 border border-amber-700/60 text-[9px] font-bold text-amber-300 flex items-center gap-1 cursor-pointer transition"
                           title={rec.periodItems.map((p, i) => `#${i+1} ${p.periode}: ${formatRupiah(p.nominal)} ${p.keterangan ? `(${p.keterangan})` : ''}`).join('\n')}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                           <span>{rec.periodItems.length} Periode</span>
-                        </div>
+                        </button>
                       )}
                     </div>
                   </td>

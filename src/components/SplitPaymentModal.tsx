@@ -22,6 +22,7 @@ interface SplitPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveRecord: (updatedRecord: BillingRecord) => void;
+  onOpenRecordModal?: (record: BillingRecord) => void;
 }
 
 export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
@@ -29,6 +30,7 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
   isOpen,
   onClose,
   onSaveRecord,
+  onOpenRecordModal,
 }) => {
   if (!isOpen || !record) return null;
 
@@ -175,12 +177,28 @@ export const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
               Manajemen Pembayaran Split / Termin HO - Periode: <span className="text-slate-200 font-mono">{record.periode}</span>
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenRecordModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenRecordModal(record);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-600/30 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/40 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="Edit Nomor IOM, Periode, Nominal, atau Checklist Tagihan"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-300" />
+                <span>Edit Detail / No. IOM</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Content */}
