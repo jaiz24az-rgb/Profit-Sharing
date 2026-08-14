@@ -139,12 +139,20 @@ export interface ChecklistStageItem {
   completedAt?: string;
 }
 
+export interface PeriodItem {
+  id: string;
+  periode: string; // e.g. "01 - 15 Feb 2026"
+  nominal: number; // e.g. 50000000
+  keterangan?: string; // e.g. "Periode I / Paruh Pertama"
+}
+
 export interface BillingRecord {
   id: string;
   category?: BillingCategory; // 'CARGO' or 'OPERASIONAL', default 'CARGO'
   airline: Airline;
   vendor: Vendor;
   periode: string; // e.g. "01 - 15 Jan 2026" or "Agustus 2026"
+  periodItems?: PeriodItem[]; // Multi-periode & nominal breakdown in 1 tagihan
   noInvoice?: string;
   noIrf?: string;
   noIom?: string; // For Operational

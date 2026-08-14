@@ -281,9 +281,20 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
 
                   {/* Data Periode */}
                   <td className="px-1 py-2 border-r border-slate-800 text-slate-300 text-center">
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800/90 border border-slate-700/80 text-[10px] font-mono text-slate-200 block truncate">
-                      {rec.periode}
-                    </span>
+                    <div className="flex flex-col items-center justify-center gap-1">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-800/90 border border-slate-700/80 text-[10px] font-mono text-slate-200 block truncate max-w-[130px]" title={rec.periode}>
+                        {rec.periode}
+                      </span>
+                      {rec.periodItems && rec.periodItems.length > 0 && (
+                        <div 
+                          className="px-1.5 py-0.5 rounded-full bg-amber-950/80 border border-amber-700/60 text-[9px] font-bold text-amber-300 flex items-center gap-1 cursor-help group relative"
+                          title={rec.periodItems.map((p, i) => `#${i+1} ${p.periode}: ${formatRupiah(p.nominal)} ${p.keterangan ? `(${p.keterangan})` : ''}`).join('\n')}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                          <span>{rec.periodItems.length} Periode</span>
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   {/* STAGES COLUMNS */}

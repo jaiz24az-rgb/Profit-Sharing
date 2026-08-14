@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS } from '../types';
-import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes, Plus, Receipt } from 'lucide-react';
+import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem } from '../types';
+import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes, Plus, Receipt, Trash2, Calendar, DollarSign, ListPlus } from 'lucide-react';
 import { generateOfficialIRFNumber, buildDefaultIRFData } from '../utils/irfHelper';
 import { parseExcelForIRF } from '../utils/excelHelper';
+import { formatRupiah } from '../utils/export';
 
 interface NewRecordModalProps {
   isOpen: boolean;
@@ -30,12 +31,47 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
   const [airline, setAirline] = useState<Airline>('PT Sriwijaya Air');
   const [vendor, setVendor] = useState<Vendor>('PT 21 Express');
   const [customVendor, setCustomVendor] = useState('');
-  const [periode, setPeriode] = useState('Juli 2026');
+  const [periode, setPeriode] = useState('01 - 15 Feb 2026');
   const [nominal, setNominal] = useState(100000000);
   const [noInvoice, setNoInvoice] = useState('');
   const [noIrf, setNoIrf] = useState('');
   const [noIom, setNoIom] = useState('');
   const [noApgnr, setNoApgnr] = useState('');
+
+  // Multi Periode & Nominal Breakdown State
+  const [useMultiPeriode, setUseMultiPeriode] = useState(false);
+  const [periodItems, setPeriodItems] = useState<PeriodItem[]>([
+    { id: '1', periode: '01 - 15 Feb 2026', nominal: 50000000, keterangan: 'Periode I' },
+    { id: '2', periode: '16 - 28 Feb 2026', nominal: 50000000, keterangan: 'Periode II' },
+  ]);
+
+  const handleAddPeriodItem = () => {
+    const nextId = String(Date.now());
+    setPeriodItems(prev => [
+      ...prev,
+      { id: nextId, periode: '', nominal: 0, keterangan: `Periode ${prev.length + 1}` }
+    ]);
+  };
+
+  const handleRemovePeriodItem = (id: string) => {
+    if (periodItems.length <= 1) {
+      alert('Satu tagihan minimal memiliki 1 periode.');
+      return;
+    }
+    setPeriodItems(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleUpdatePeriodItem = (id: string, field: keyof PeriodItem, value: any) => {
+    setPeriodItems(prev => prev.map(p => {
+      if (p.id === id) {
+        return { ...p, [field]: value };
+      }
+      return p;
+    }));
+  };
+
+  const calculatedTotalNominal = periodItems.reduce((acc, p) => acc + (Number(p.nominal) || 0), 0);
+  const derivedCombinedPeriode = periodItems.map(p => p.periode.trim()).filter(Boolean).join(', ');
 
   // Excel Upload State
   const [importedExcelData, setImportedExcelData] = useState<any | null>(null);
@@ -115,6 +151,10 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       return;
     }
 
+    const finalPeriode = useMultiPeriode ? (derivedCombinedPeriode || periode) : periode;
+    const finalNominal = useMultiPeriode ? calculatedTotalNominal : (Number(nominal) || 0);
+    const finalPeriodItems = useMultiPeriode ? periodItems : undefined;
+
     if (category === 'OPERASIONAL') {
       const id = `REC-OP-2026-${Math.floor(100 + Math.random() * 900)}`;
       const finalIom = noIom || `IOM/${airline === 'PT Sriwijaya Air' ? 'SJ' : 'IN'}-SUB/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`;
@@ -124,8 +164,9 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
         category: 'OPERASIONAL',
         airline,
         vendor: selectedVendor,
-        periode,
-        nominal: Number(nominal) || 0,
+        periode: finalPeriode,
+        nominal: finalNominal,
+        periodItems: finalPeriodItems,
         noInvoice: noInvoice || undefined,
         noIom: finalIom,
         noApgnr: noApgnr || undefined,
@@ -154,8 +195,9 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
         category: 'CARGO',
         airline,
         vendor: selectedVendor,
-        periode,
-        nominal: Number(nominal) || 0,
+        periode: finalPeriode,
+        nominal: finalNominal,
+        periodItems: finalPeriodItems,
         noInvoice: noInvoice || undefined,
         noIrf: finalIrfNo,
         createdAt: new Date().toISOString().slice(0, 10),
@@ -458,29 +500,154 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
             </p>
           </div>
 
-          <div>
-            <label className="block text-slate-400 mb-1 font-medium">Data Periode / Bulan Tagihan</label>
-            <input
-              type="text"
-              value={periode}
-              onChange={(e) => setPeriode(e.target.value)}
-              placeholder="Contoh: Juli 2026"
-              required
-              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
-            />
-          </div>
+          {/* Data Periode & Nominal Tagihan Section */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-blue-400" />
+                <span>Rincian Periode & Nominal Tagihan</span>
+              </label>
 
-          <div>
-            <label className="block text-slate-400 mb-1 font-medium">
-              {category === 'OPERASIONAL' ? 'Total Nominal Tagihan Vendor (Rp)' : 'Estimasi Nominal Tagihan per Instansi (Rp)'}
-            </label>
-            <input
-              type="number"
-              value={nominal}
-              onChange={(e) => setNominal(Number(e.target.value))}
-              required
-              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
-            />
+              {/* Mode Toggle */}
+              <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setUseMultiPeriode(false)}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
+                    !useMultiPeriode
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Single Periode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseMultiPeriode(true)}
+                  className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1 transition cursor-pointer ${
+                    useMultiPeriode
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ListPlus className="w-3 h-3 text-amber-300" />
+                  <span>Multi-Periode (+)</span>
+                </button>
+              </div>
+            </div>
+
+            {!useMultiPeriode ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 text-[11px] font-medium">Data Periode Tagihan</label>
+                  <input
+                    type="text"
+                    value={periode}
+                    onChange={(e) => setPeriode(e.target.value)}
+                    placeholder="Contoh: 01 - 15 Feb 2026"
+                    required={!useMultiPeriode}
+                    className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 text-[11px] font-medium">
+                    {category === 'OPERASIONAL' ? 'Total Nominal Tagihan (Rp)' : 'Nominal Tagihan (Rp)'}
+                  </label>
+                  <input
+                    type="number"
+                    value={nominal}
+                    onChange={(e) => setNominal(Number(e.target.value))}
+                    required={!useMultiPeriode}
+                    className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <p className="text-[11px] text-amber-300/90 bg-amber-950/30 p-2 rounded-lg border border-amber-800/40">
+                  ⚡ <strong>Satu Tagihan Multi-Periode:</strong> Masukkan beberapa sub-periode dan nominal masing-masing. Total nominal tagihan akan dihitung otomatis.
+                </p>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {periodItems.map((item, idx) => (
+                    <div key={item.id} className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          # Rincian Periode ke-{idx + 1}
+                        </span>
+                        {periodItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePeriodItem(item.id)}
+                            className="p-1 rounded bg-red-950/50 text-red-400 hover:bg-red-900 hover:text-white border border-red-800/40 text-[10px] flex items-center gap-1 transition cursor-pointer"
+                            title="Hapus sub-periode ini"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Hapus</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-0.5 font-medium">Data Periode</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 01 - 15 Feb 2026"
+                            value={item.periode}
+                            onChange={(e) => handleUpdatePeriodItem(item.id, 'periode', e.target.value)}
+                            className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-0.5 font-medium">Nominal (Rp)</label>
+                          <input
+                            type="number"
+                            placeholder="50000000"
+                            value={item.nominal || ''}
+                            onChange={(e) => handleUpdatePeriodItem(item.id, 'nominal', Number(e.target.value))}
+                            className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-0.5 font-medium">Keterangan (Opsional)</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Paruh Pertama Feb"
+                            value={item.keterangan || ''}
+                            onChange={(e) => handleUpdatePeriodItem(item.id, 'keterangan', e.target.value)}
+                            className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={handleAddPeriodItem}
+                    className="px-3 py-1.5 rounded-lg bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>+ Tambah Sub-Periode Tagihan</span>
+                  </button>
+
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-medium">Total Tagihan ({periodItems.length} Periode):</span>
+                    <span className="text-sm font-extrabold font-mono text-emerald-400">
+                      {formatRupiah(calculatedTotalNominal)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Operational Specific Inputs (IOM & APGNR) */}

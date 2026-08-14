@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BillingRecord, STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS } from '../types';
+import { BillingRecord, STAGES, StageKey, Airline, Vendor, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem } from '../types';
 import { formatRupiah } from '../utils/export';
-import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt } from 'lucide-react';
+import { X, Calendar, CheckCircle2, Save, Trash2, FileText, Building2, Plane, RefreshCw, ExternalLink, Plus, Receipt, ListPlus } from 'lucide-react';
 import { generateOfficialIRFNumber } from '../utils/irfHelper';
 
 interface RecordModalProps {
@@ -144,25 +144,180 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1">Data Periode</label>
-              <input
-                type="text"
-                placeholder="Contoh: 01 - 15 Jan 2026"
-                value={formData.periode}
-                onChange={(e) => setFormData(prev => prev ? ({ ...prev, periode: e.target.value }) : null)}
-                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
-              />
-            </div>
+            {/* Data Periode & Nominal Section */}
+            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+                <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Rincian Periode & Nominal</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => {
+                      if (!prev) return null;
+                      if (prev.periodItems && prev.periodItems.length > 0) {
+                        // Switch off multi-periode
+                        return { ...prev, periodItems: undefined };
+                      } else {
+                        // Switch on multi-periode
+                        const initial: PeriodItem[] = [
+                          { id: '1', periode: prev.periode || '01 - 15 Feb 2026', nominal: prev.nominal || 0, keterangan: 'Periode I' },
+                          { id: '2', periode: '16 - 28 Feb 2026', nominal: 0, keterangan: 'Periode II' },
+                        ];
+                        return {
+                          ...prev,
+                          periodItems: initial,
+                        };
+                      }
+                    });
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
+                    formData.periodItems && formData.periodItems.length > 0
+                      ? 'bg-amber-950/60 text-amber-300 border-amber-800/80'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                  }`}
+                >
+                  <ListPlus className="w-3 h-3 text-amber-400" />
+                  <span>{formData.periodItems && formData.periodItems.length > 0 ? 'Mode Multi-Periode Aktif' : '+ Aktifkan Multi-Periode'}</span>
+                </button>
+              </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1">Nominal Tagihan (Rp)</label>
-              <input
-                type="number"
-                value={formData.nominal}
-                onChange={(e) => setFormData(prev => prev ? ({ ...prev, nominal: Number(e.target.value) }) : null)}
-                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-blue-500"
-              />
+              {(!formData.periodItems || formData.periodItems.length === 0) ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 text-[10px] mb-1">Data Periode</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: 01 - 15 Jan 2026"
+                      value={formData.periode}
+                      onChange={(e) => setFormData(prev => prev ? ({ ...prev, periode: e.target.value }) : null)}
+                      className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 text-[10px] mb-1">Nominal Tagihan (Rp)</label>
+                    <input
+                      type="number"
+                      value={formData.nominal}
+                      onChange={(e) => setFormData(prev => prev ? ({ ...prev, nominal: Number(e.target.value) }) : null)}
+                      className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {formData.periodItems.map((item, idx) => (
+                      <div key={item.id} className="p-2 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-slate-400"># Sub-Periode {idx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => {
+                                if (!prev || !prev.periodItems) return prev;
+                                const nextItems = prev.periodItems.filter(p => p.id !== item.id);
+                                const nextTotal = nextItems.reduce((s, p) => s + (p.nominal || 0), 0);
+                                const nextCombined = nextItems.map(p => p.periode).filter(Boolean).join(', ');
+                                return {
+                                  ...prev,
+                                  periodItems: nextItems.length > 0 ? nextItems : undefined,
+                                  nominal: nextItems.length > 0 ? nextTotal : prev.nominal,
+                                  periode: nextItems.length > 0 ? nextCombined : prev.periode,
+                                };
+                              });
+                            }}
+                            className="text-red-400 hover:text-red-300 text-[9px] flex items-center gap-0.5"
+                          >
+                            <Trash2 className="w-2.5 h-2.5" /> Hapus
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1.5 text-xs">
+                          <input
+                            type="text"
+                            placeholder="Periode (01 - 15 Feb)"
+                            value={item.periode}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData(prev => {
+                                if (!prev || !prev.periodItems) return prev;
+                                const nextItems = prev.periodItems.map(p => p.id === item.id ? { ...p, periode: val } : p);
+                                const nextCombined = nextItems.map(p => p.periode).filter(Boolean).join(', ');
+                                return { ...prev, periodItems: nextItems, periode: nextCombined };
+                              });
+                            }}
+                            className="p-1.5 bg-slate-900 border border-slate-700 rounded text-white font-mono text-[11px]"
+                          />
+
+                          <input
+                            type="number"
+                            placeholder="Nominal (Rp)"
+                            value={item.nominal || ''}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setFormData(prev => {
+                                if (!prev || !prev.periodItems) return prev;
+                                const nextItems = prev.periodItems.map(p => p.id === item.id ? { ...p, nominal: val } : p);
+                                const nextTotal = nextItems.reduce((s, p) => s + (p.nominal || 0), 0);
+                                return { ...prev, periodItems: nextItems, nominal: nextTotal };
+                              });
+                            }}
+                            className="p-1.5 bg-slate-900 border border-slate-700 rounded text-white font-mono text-[11px]"
+                          />
+
+                          <input
+                            type="text"
+                            placeholder="Ket (Opsional)"
+                            value={item.keterangan || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData(prev => {
+                                if (!prev || !prev.periodItems) return prev;
+                                const nextItems = prev.periodItems.map(p => p.id === item.id ? { ...p, keterangan: val } : p);
+                                return { ...prev, periodItems: nextItems };
+                              });
+                            }}
+                            className="p-1.5 bg-slate-900 border border-slate-700 rounded text-white text-[11px]"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => {
+                          if (!prev) return prev;
+                          const current = prev.periodItems || [];
+                          const newItem: PeriodItem = {
+                            id: String(Date.now()),
+                            periode: '',
+                            nominal: 0,
+                            keterangan: `Periode ${current.length + 1}`
+                          };
+                          return {
+                            ...prev,
+                            periodItems: [...current, newItem]
+                          };
+                        });
+                      }}
+                      className="px-2 py-1 bg-blue-950 text-blue-300 hover:bg-blue-900 rounded border border-blue-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ Sub-Periode</span>
+                    </button>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 block font-medium">Total: {formatRupiah(formData.nominal)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

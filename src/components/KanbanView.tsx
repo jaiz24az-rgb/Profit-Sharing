@@ -79,13 +79,33 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
                 </div>
 
                 {/* Meta details */}
-                <div className="mt-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80 text-xs space-y-1">
-                  <div className="flex justify-between text-slate-300">
+                <div className="mt-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80 text-xs space-y-1.5">
+                  <div className="flex justify-between items-center text-slate-300">
                     <span className="text-slate-500">Periode:</span>
-                    <span className="font-mono">{rec.periode}</span>
+                    <div className="flex items-center gap-1.5 font-mono text-[11px] text-right">
+                      <span>{rec.periode}</span>
+                      {rec.periodItems && rec.periodItems.length > 0 && (
+                        <span className="px-1.5 py-0.2 bg-amber-950 text-amber-300 border border-amber-800/80 rounded text-[9px] font-bold">
+                          {rec.periodItems.length} Periode
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {rec.periodItems && rec.periodItems.length > 0 && (
+                    <div className="bg-slate-900/90 p-2 rounded border border-slate-800 space-y-1 my-1">
+                      <span className="text-[10px] text-amber-400 font-bold block">Rincian Multi-Periode:</span>
+                      {rec.periodItems.map((pi, idx) => (
+                        <div key={pi.id} className="flex justify-between text-[10px] text-slate-300 border-b border-slate-800/50 pb-0.5 last:border-0 last:pb-0">
+                          <span>#{idx+1} {pi.periode} {pi.keterangan ? `(${pi.keterangan})` : ''}</span>
+                          <span className="font-mono text-emerald-400 font-semibold">{formatRupiah(pi.nominal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-slate-300">
-                    <span className="text-slate-500">Nominal:</span>
+                    <span className="text-slate-500">Total Nominal:</span>
                     <span className="font-bold text-emerald-400">{formatRupiah(rec.nominal)}</span>
                   </div>
                   {rec.noIom && (
