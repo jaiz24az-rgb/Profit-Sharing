@@ -25,6 +25,7 @@ export function exportToExcel(records: BillingRecord[], fileName = 'Checklist_Pe
       'Kategori': rec.category || 'CARGO',
       'Data Periode': rec.periode,
       'No. Invoice': rec.noInvoice || '-',
+      'Rincian Multi-Invoice': rec.invoices && rec.invoices.length > 0 ? rec.invoices.map(i => `${i.invoiceNumber} (${i.invoiceDate || '-'}) : ${formatRupiah(i.amount || 0)}`).join('; ') : (rec.noInvoice || '-'),
       'No. IRF / IOM': rec.noIrf || rec.noIom || '-',
       'Jenis Tagihan PPh': getTaxLabel(taxType),
       'Dasar Pengenaan Pajak / DPP (Rp)': dpp,
@@ -110,7 +111,11 @@ export function generateHOEmailSummary(records: BillingRecord[]): string {
         const taxBadge = taxType === 'JASA' ? 'Jasa (-2%)' : taxType === 'BUKAN_JASA' ? 'Bukan Jasa (-10%)' : '0%';
 
         text += `  ${idx + 1}. [${r.vendor}] - Periode: ${r.periode}\n`;
-        text += `     • No. Invoice: ${r.noInvoice || 'Belum Terbit'}\n`;
+        if (r.invoices && r.invoices.length > 1) {
+          text += `     • Rincian Invoice (${r.invoices.length} Lembar): ${r.invoices.map(i => `${i.invoiceNumber}${i.amount ? ` [${formatRupiah(i.amount)}]` : ''}`).join(', ')}\n`;
+        } else {
+          text += `     • No. Invoice: ${r.noInvoice || 'Belum Terbit'}\n`;
+        }
         text += `     • Nilai Bruto: ${formatRupiah(r.nominal)} | Tipe: ${taxBadge}\n`;
         text += `     • Potongan: - ${formatRupiah(deduction)} ➔ Total Bayar HO (Netto): ${formatRupiah(netHo)}\n`;
         text += `     • Checklist: ${completedStagesCount}/8 Tahap | Status: ${r.overallStatus}\n`;

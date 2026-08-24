@@ -276,12 +276,22 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                       <span className="text-slate-100 text-[11px] truncate font-bold" title={rec.vendor}>
                         {rec.vendor.replace('PT ', '')}
                       </span>
-                      {rec.noInvoice && (
+                      {rec.invoices && rec.invoices.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => setBreakdownRecord(rec)}
+                          className="text-[9px] text-blue-300 font-mono flex items-center gap-1 mt-0.5 truncate hover:underline cursor-pointer bg-blue-950/70 hover:bg-blue-900/80 px-1.5 py-0.5 rounded border border-blue-700/60 w-fit"
+                          title={`${rec.invoices.length} Lembar Invoice Vendor: ${rec.invoices.map(i => i.invoiceNumber).join(', ')}`}
+                        >
+                          <Receipt className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+                          <span className="font-bold">{rec.invoices.length} Invoices</span>
+                        </button>
+                      ) : rec.noInvoice ? (
                         <span className="text-[9px] text-blue-300 font-mono flex items-center gap-0.5 mt-0.5 truncate" title={`No. Invoice Vendor ke ${rec.airline}: ${rec.noInvoice}`}>
                           <Receipt className="w-2.5 h-2.5 text-blue-400 shrink-0" />
                           <span className="truncate">Inv: {rec.noInvoice}</span>
                         </span>
-                      )}
+                      ) : null}
                       <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                         <button
                           type="button"
@@ -545,8 +555,64 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
               </button>
             </div>
 
-            {/* List of Billing Points if exists */}
-            {breakdownRecord.billingPoints && breakdownRecord.billingPoints.length > 0 ? (
+            {/* List of Invoices in 1 Period if exists */}
+            {breakdownRecord.invoices && breakdownRecord.invoices.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <Receipt className="w-4 h-4 text-blue-400" />
+                    <span>Daftar Invoice & Rincian Point ({breakdownRecord.invoices.length} Invoice):</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Total DPP: <strong className="text-emerald-400 font-mono">{formatRupiah(breakdownRecord.invoices.reduce((s, i) => s + (i.amount || 0), 0))}</strong>
+                  </span>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 max-h-56 overflow-y-auto space-y-2 divide-y divide-slate-800/60">
+                  {breakdownRecord.invoices.map((inv, idx) => (
+                    <div key={inv.id || idx} className="pt-2 first:pt-0 space-y-1.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-blue-900/60 text-blue-300 font-bold text-[9px] flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <span className="text-white font-mono font-bold">{inv.invoiceNumber}</span>
+                            {inv.invoiceDate && <span className="text-slate-400 text-[10px] ml-1.5">({inv.invoiceDate})</span>}
+                            {inv.description && <p className="text-slate-400 text-[10px] mt-0.5">{inv.description}</p>}
+                          </div>
+                        </div>
+                        {inv.amount !== undefined && inv.amount > 0 && (
+                          <span className="font-mono text-emerald-400 font-semibold self-end sm:self-center">
+                            DPP: {formatRupiah(inv.amount)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Nested points per invoice */}
+                      {inv.billingPoints && inv.billingPoints.length > 0 && (
+                        <div className="ml-6 pl-2 border-l border-slate-800 space-y-1 bg-slate-900/50 p-1.5 rounded text-[11px]">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Point Tagihan Invoice Ini ({inv.billingPoints.length} Point):
+                          </span>
+                          {inv.billingPoints.map((pt, pIdx) => (
+                            <div key={pt.id || pIdx} className="flex items-center justify-between text-[11px]">
+                              <span className="text-slate-300 flex items-center gap-1">
+                                <span className="text-slate-500 font-mono text-[9px]">•</span>
+                                <span>{pt.description}</span>
+                              </span>
+                              <span className="font-mono text-emerald-400 font-medium">{formatRupiah(pt.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* List of Billing Points if exists (Single invoice mode) */}
+            {(!breakdownRecord.invoices || breakdownRecord.invoices.length === 0) && breakdownRecord.billingPoints && breakdownRecord.billingPoints.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
                   <span className="flex items-center gap-1.5">

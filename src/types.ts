@@ -141,6 +141,15 @@ export interface ChecklistStageItem {
   completedAt?: string;
 }
 
+export interface VendorInvoiceItem {
+  id: string;
+  invoiceNumber: string; // e.g. "INV/GAP-SUB/2026/07/042"
+  invoiceDate?: string; // YYYY-MM-DD
+  amount?: number; // Nilai nominal tagihan per invoice (IDR) - Subtotal DPP invoice
+  description?: string; // Keterangan / Uraian invoice
+  billingPoints?: BillingPointItem[]; // Rincian point-point tagihan pokok (DPP) dalam invoice ini
+}
+
 export interface BillingPointItem {
   id: string;
   description: string; // Deskripsi point / rincian pekerjaan / item tagihan
@@ -165,7 +174,8 @@ export interface BillingRecord {
   periode: string; // e.g. "01 - 15 Jan 2026" or "Agustus 2026"
   periodItems?: PeriodItem[]; // Multi-periode & nominal breakdown in 1 tagihan
   billingPoints?: BillingPointItem[]; // Point-point rincian tagihan pokok (DPP)
-  noInvoice?: string;
+  noInvoice?: string; // Main or combined invoice numbers
+  invoices?: VendorInvoiceItem[]; // Multi-invoice list dalam 1 periode tagihan
   noIrf?: string;
   noIom?: string; // For Operational
   noApgnr?: string; // For Operational

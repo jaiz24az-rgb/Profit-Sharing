@@ -307,7 +307,11 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     airline: 'PT Sriwijaya Air',
     vendor: 'PT Gapura Angkasa',
     periode: '01 - 15 Juli 2026',
-    noInvoice: 'INV/GAP-SUB/2026/07/042',
+    noInvoice: 'INV/GAP-SUB/2026/07/042, INV/GAP-SUB/2026/07/043',
+    invoices: [
+      { id: 'inv-1', invoiceNumber: 'INV/GAP-SUB/2026/07/042', invoiceDate: '2026-07-15', amount: 45000000, description: 'Ground Handling & Ramp Support Periode 01-15 Juli 2026' },
+      { id: 'inv-2', invoiceNumber: 'INV/GAP-SUB/2026/07/043', invoiceDate: '2026-07-15', amount: 22594163, description: 'Aviobridge & Facility Support Periode 01-15 Juli 2026' }
+    ],
     noIom: 'IOM/SJ-SUB/2026/07/028',
     noApgnr: 'APGNR/HO/2026/08/064',
     nominal: 67594163,

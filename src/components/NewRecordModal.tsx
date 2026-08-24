@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType, BillingPointItem } from '../types';
+import { BillingRecord, Airline, Vendor, STAGES, BillingCategory, DEFAULT_OPERATIONAL_VENDORS, DEFAULT_CARGO_VENDORS, PeriodItem, TaxType, BillingPointItem, VendorInvoiceItem } from '../types';
 import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Building2, Boxes, Plus, Receipt, Trash2, Calendar, DollarSign, ListPlus, Calculator, Percent } from 'lucide-react';
 import { generateOfficialIRFNumber, buildDefaultIRFData } from '../utils/irfHelper';
 import { parseExcelForIRF } from '../utils/excelHelper';
@@ -38,6 +38,93 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
   const [noIrf, setNoIrf] = useState('');
   const [noIom, setNoIom] = useState('');
   const [noApgnr, setNoApgnr] = useState('');
+
+  // Multi-Invoice State in 1 Billing Period
+  const [useMultiInvoice, setUseMultiInvoice] = useState(false);
+  const [invoices, setInvoices] = useState<VendorInvoiceItem[]>([
+    { id: '1', invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: 'Invoice Vendor #1' },
+    { id: '2', invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: 'Invoice Vendor #2' },
+  ]);
+
+  const handleAddInvoice = () => {
+    const nextId = String(Date.now());
+    setInvoices(prev => [
+      ...prev,
+      { id: nextId, invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: `Invoice Vendor #${prev.length + 1}` }
+    ]);
+  };
+
+  const handleRemoveInvoice = (id: string) => {
+    if (invoices.length <= 1) {
+      alert('Minimal harus ada 1 baris invoice.');
+      return;
+    }
+    setInvoices(prev => prev.filter(inv => inv.id !== id));
+  };
+
+  const handleUpdateInvoice = (id: string, field: keyof VendorInvoiceItem, value: any) => {
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id === id) {
+        return { ...inv, [field]: value };
+      }
+      return inv;
+    }));
+  };
+
+  const handleAddPointToInvoice = (invoiceId: string) => {
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id === invoiceId) {
+        const currentPts = inv.billingPoints || [];
+        const newPt: BillingPointItem = {
+          id: String(Date.now()),
+          description: `Point Tagihan ${currentPts.length + 1}`,
+          amount: 0,
+        };
+        const nextPts = [...currentPts, newPt];
+        const nextAmount = nextPts.reduce((s, p) => s + (p.amount || 0), 0);
+        return {
+          ...inv,
+          billingPoints: nextPts,
+          amount: nextAmount,
+        };
+      }
+      return inv;
+    }));
+  };
+
+  const handleUpdatePointInInvoice = (invoiceId: string, pointId: string, field: keyof BillingPointItem, value: any) => {
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id === invoiceId) {
+        const currentPts = inv.billingPoints || [];
+        const nextPts = currentPts.map(p => p.id === pointId ? { ...p, [field]: value } : p);
+        const nextAmount = nextPts.reduce((s, p) => s + (p.amount || 0), 0);
+        return {
+          ...inv,
+          billingPoints: nextPts,
+          amount: nextAmount,
+        };
+      }
+      return inv;
+    }));
+  };
+
+  const handleRemovePointFromInvoice = (invoiceId: string, pointId: string) => {
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id === invoiceId) {
+        const currentPts = inv.billingPoints || [];
+        const nextPts = currentPts.filter(p => p.id !== pointId);
+        const nextAmount = nextPts.length > 0 ? nextPts.reduce((s, p) => s + (p.amount || 0), 0) : (inv.amount || 0);
+        return {
+          ...inv,
+          billingPoints: nextPts.length > 0 ? nextPts : undefined,
+          amount: nextAmount,
+        };
+      }
+      return inv;
+    }));
+  };
+
+  const calculatedInvoicesTotal = invoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
 
   // Tax & PPN State
   const [taxType, setTaxType] = useState<TaxType>('JASA');
@@ -193,7 +280,9 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
     
     // Determine DPP (Dasar Pengenaan Pajak / Pokok dari point-point atau subtotal)
     let finalDpp = 0;
-    if (useBillingPoints) {
+    if (useMultiInvoice && calculatedInvoicesTotal > 0) {
+      finalDpp = calculatedInvoicesTotal;
+    } else if (useBillingPoints) {
       finalDpp = calculatedPointsDpp;
     } else if (useMultiPeriode) {
       finalDpp = calculatedTotalNominal;
@@ -242,7 +331,13 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       if (useBillingPoints && billingPoints && billingPoints.length > 0) {
         newRec.billingPoints = billingPoints;
       }
-      if (noInvoice && noInvoice.trim()) {
+      if (useMultiInvoice && invoices && invoices.length > 0) {
+        const validInvoices = invoices.filter(inv => inv.invoiceNumber.trim());
+        if (validInvoices.length > 0) {
+          newRec.invoices = validInvoices;
+          newRec.noInvoice = validInvoices.map(i => i.invoiceNumber).join(', ');
+        }
+      } else if (noInvoice && noInvoice.trim()) {
         newRec.noInvoice = noInvoice.trim();
       }
       if (finalIom) {
@@ -289,7 +384,13 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       if (useBillingPoints && billingPoints && billingPoints.length > 0) {
         newRec.billingPoints = billingPoints;
       }
-      if (noInvoice && noInvoice.trim()) {
+      if (useMultiInvoice && invoices && invoices.length > 0) {
+        const validInvoices = invoices.filter(inv => inv.invoiceNumber.trim());
+        if (validInvoices.length > 0) {
+          newRec.invoices = validInvoices;
+          newRec.noInvoice = validInvoices.map(i => i.invoiceNumber).join(', ');
+        }
+      } else if (noInvoice && noInvoice.trim()) {
         newRec.noInvoice = noInvoice.trim();
       }
 
@@ -585,25 +686,213 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
             </div>
           )}
 
-          {/* No. Invoice Vendor Field (Untuk PT Sriwijaya Air & PT NAM Air) */}
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-            <div className="flex items-center justify-between">
+          {/* No. Invoice Vendor Field (Untuk PT Sriwijaya Air & PT NAM Air) - Single or Multi-Invoice */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
               <label className="block text-slate-200 font-bold text-xs flex items-center gap-1.5">
                 <Receipt className="w-3.5 h-3.5 text-blue-400" />
                 <span>No. Invoice Vendor (untuk Tagihan {airline})</span>
               </label>
-              <span className="text-[10px] text-slate-400 font-medium">Opsional / Dari Vendor</span>
+              
+              <div className="flex items-center gap-1">
+                {!useMultiInvoice ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseMultiInvoice(true);
+                      if (noInvoice && invoices[0]) {
+                        setInvoices(prev => [{ ...prev[0], invoiceNumber: noInvoice, amount: nominal || 0 }, ...(prev.slice(1))]);
+                      }
+                    }}
+                    className="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3 text-blue-400" />
+                    <span>+ Multi-Invoice</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setUseMultiInvoice(false)}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] font-medium transition cursor-pointer"
+                  >
+                    Kembali ke Single Invoice
+                  </button>
+                )}
+              </div>
             </div>
-            <input
-              type="text"
-              value={noInvoice}
-              onChange={(e) => setNoInvoice(e.target.value)}
-              placeholder="e.g. INV/VDR/2026/08/104 atau INV/SUB/099"
-              className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500 focus:outline-none"
-            />
-            <p className="text-[10px] text-slate-400">
-              Nomor Invoice resmi yang diterbitkan Vendor untuk ditagihkan ke {airline}.
-            </p>
+
+            {!useMultiInvoice ? (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={noInvoice}
+                  onChange={(e) => setNoInvoice(e.target.value)}
+                  placeholder="e.g. INV/VDR/2026/08/104 atau INV/SUB/099"
+                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-blue-500 focus:outline-none"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Nomor Invoice resmi yang diterbitkan Vendor untuk ditagihkan ke {airline}. Jika dalam 1 periode terdapat lebih dari 1 nomor invoice, klik <strong>+ Multi-Invoice</strong>.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-blue-300 bg-blue-950/40 p-2 rounded-lg border border-blue-800/40">
+                  <span>📄 <strong>Daftar Lembar Invoice & Rincian Point per Invoice</strong> ({invoices.length} Lembar):</span>
+                  <button
+                    type="button"
+                    onClick={handleAddInvoice}
+                    className="px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-500 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ Tambah Invoice</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {invoices.map((inv, idx) => (
+                    <div key={inv.id} className="p-2.5 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-blue-900 text-blue-200 flex items-center justify-center text-[10px] font-mono">
+                            {idx + 1}
+                          </span>
+                          <span className="text-white text-xs">Invoice #{idx + 1}</span>
+                          {inv.invoiceNumber && (
+                            <span className="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300 font-mono text-[10px]">
+                              {inv.invoiceNumber}
+                            </span>
+                          )}
+                        </span>
+                        {invoices.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveInvoice(inv.id)}
+                            className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-0.5 cursor-pointer px-1.5 py-0.5 rounded bg-rose-950/30 border border-rose-900/40"
+                          >
+                            <Trash2 className="w-3 h-3" /> Hapus Invoice
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-xs">
+                        <div>
+                          <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">No. Invoice</label>
+                          <input
+                            type="text"
+                            placeholder="INV/VDR/2026/08/101"
+                            value={inv.invoiceNumber}
+                            onChange={(e) => handleUpdateInvoice(inv.id, 'invoiceNumber', e.target.value)}
+                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">Tanggal Invoice</label>
+                          <input
+                            type="date"
+                            value={inv.invoiceDate || ''}
+                            onChange={(e) => handleUpdateInvoice(inv.id, 'invoiceDate', e.target.value)}
+                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">
+                            Subtotal DPP Invoice (Rp)
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={inv.amount || ''}
+                            onChange={(e) => handleUpdateInvoice(inv.id, 'amount', Number(e.target.value))}
+                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-emerald-400 font-mono text-[11px] font-bold focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Uraian / Deskripsi Invoice (opsional, e.g. Jasa Ground Handling Flight JT-902)"
+                          value={inv.description || ''}
+                          onChange={(e) => handleUpdateInvoice(inv.id, 'description', e.target.value)}
+                          className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 text-[11px] focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Rincian Point Tagihan didalam Invoice Ini */}
+                      <div className="pt-1.5 border-t border-slate-800/80 space-y-1.5 bg-slate-950/60 p-2 rounded-lg">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                            <span>📌 Rincian Point Tagihan ({inv.billingPoints?.length || 0} Point)</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddPointToInvoice(inv.id)}
+                            className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[9px] font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                            <span>+ Tambah Point</span>
+                          </button>
+                        </div>
+
+                        {inv.billingPoints && inv.billingPoints.length > 0 && (
+                          <div className="space-y-1">
+                            {inv.billingPoints.map((pt, pIdx) => (
+                              <div key={pt.id} className="flex items-center gap-1.5 text-xs">
+                                <span className="w-4 h-4 rounded bg-slate-800 text-slate-400 font-mono text-[9px] flex items-center justify-center shrink-0">
+                                  {pIdx + 1}
+                                </span>
+                                <input
+                                  type="text"
+                                  placeholder="Deskripsi Point (e.g. Ground Handling, Ramp, Service)"
+                                  value={pt.description}
+                                  onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'description', e.target.value)}
+                                  className="flex-1 p-1 bg-slate-900 border border-slate-700 rounded text-white text-[10px] focus:border-emerald-500"
+                                />
+                                <input
+                                  type="number"
+                                  placeholder="DPP (Rp)"
+                                  value={pt.amount || ''}
+                                  onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'amount', Number(e.target.value))}
+                                  className="w-28 sm:w-36 p-1 bg-slate-900 border border-slate-700 rounded text-emerald-400 font-mono text-[10px] font-bold focus:border-emerald-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePointFromInvoice(inv.id, pt.id)}
+                                  className="p-1 text-rose-400 hover:text-rose-300 cursor-pointer"
+                                  title="Hapus Point Ini"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-1 border-t border-slate-800 text-[10px] gap-2">
+                  <span className="text-slate-400">
+                    Total Seluruh Invoice ({invoices.length}): <strong className="font-mono text-emerald-400">{formatRupiah(calculatedInvoicesTotal)}</strong>
+                  </span>
+                  {calculatedInvoicesTotal > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNominal(calculatedInvoicesTotal);
+                        setUseBillingPoints(true);
+                      }}
+                      className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[10px] font-semibold self-start sm:self-auto cursor-pointer"
+                    >
+                      ⚡ Sinkronkan Total ke DPP Tagihan
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Data Periode & Nominal Tagihan Section */}
@@ -702,7 +991,11 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="block text-slate-400 text-[11px] font-medium">Data Periode Tagihan</label>
-                  <span className="text-[10px] text-emerald-400 font-mono">Total {billingPoints.length} Point Tagihan</span>
+                  <span className="text-[10px] text-emerald-400 font-mono">
+                    {useMultiInvoice 
+                      ? `${invoices.length} Lembar Invoice` 
+                      : `Total ${billingPoints.length} Point Tagihan`}
+                  </span>
                 </div>
                 <input
                   type="text"
@@ -713,67 +1006,183 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                   className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:border-blue-500 font-mono text-xs"
                 />
 
-                <p className="text-[11px] text-emerald-300/90 bg-emerald-950/30 p-2 rounded-lg border border-emerald-800/40">
-                  ⚡ <strong>Rincian Point Tagihan:</strong> Masukkan item / point-point tagihan pokok (DPP). Sistem akan menjumlahkannya dan menambahkan PPN 11% secara otomatis.
-                </p>
+                {useMultiInvoice ? (
+                  /* Multi-Invoice Points Breakdown Grouped per Invoice */
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-blue-300/90 bg-blue-950/30 p-2 rounded-lg border border-blue-800/40">
+                      ⚡ <strong>Rincian Point Tagihan Dikelompokkan per Masing-Masing Invoice ({invoices.length} Invoice):</strong> Masukkan item / point pekerjaan dalam setiap lembar invoice vendor.
+                    </p>
 
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {billingPoints.map((item, idx) => (
-                    <div key={item.id} className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-slate-800 font-bold text-[10px] text-slate-300 flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          placeholder="Deskripsi Point (e.g. Ground Handling / Cargo Storage / Service)"
-                          value={item.description}
-                          onChange={(e) => handleUpdateBillingPoint(item.id, 'description', e.target.value)}
-                          className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:border-emerald-500"
-                          required
-                        />
+                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                      {invoices.map((inv, invIdx) => (
+                        <div key={inv.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-xs">
+                            <span className="font-bold text-white flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-full bg-blue-900 text-blue-200 flex items-center justify-center text-[10px] font-mono">
+                                {invIdx + 1}
+                              </span>
+                              <span>Invoice #{invIdx + 1}</span>
+                              <span className="text-slate-400 font-mono text-[11px]">
+                                {inv.invoiceNumber ? `(${inv.invoiceNumber})` : '(No. Invoice Belum Diisi)'}
+                              </span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-400">
+                                Subtotal DPP: <strong className="font-mono text-emerald-400">{formatRupiah(inv.amount || 0)}</strong>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleAddPointToInvoice(inv.id)}
+                                className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>+ Point</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Points inside this invoice */}
+                          {inv.billingPoints && inv.billingPoints.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {inv.billingPoints.map((pt, ptIdx) => (
+                                <div key={pt.id} className="flex items-center gap-2 p-1.5 bg-slate-950 rounded-lg border border-slate-800/80">
+                                  <span className="w-4 h-4 rounded bg-slate-800 text-slate-300 font-mono text-[9px] flex items-center justify-center shrink-0">
+                                    {ptIdx + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="Deskripsi Point Tagihan (e.g. Handling, Ramp, Service)"
+                                    value={pt.description}
+                                    onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'description', e.target.value)}
+                                    className="flex-1 p-1.5 bg-slate-900 border border-slate-700 rounded text-white text-xs focus:border-emerald-500"
+                                  />
+                                  <input
+                                    type="number"
+                                    placeholder="DPP (Rp)"
+                                    value={pt.amount || ''}
+                                    onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'amount', Number(e.target.value))}
+                                    className="w-32 sm:w-40 p-1.5 bg-slate-900 border border-slate-700 rounded text-emerald-400 font-mono text-xs font-bold focus:border-emerald-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePointFromInvoice(inv.id, pt.id)}
+                                    className="p-1.5 text-rose-400 hover:text-rose-300 cursor-pointer"
+                                    title="Hapus Point"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="p-2 bg-slate-950/60 rounded-lg border border-dashed border-slate-800 text-center flex items-center justify-between text-xs">
+                              <span className="text-slate-400 text-[11px]">Belum ada rincian point pada invoice ini.</span>
+                              <button
+                                type="button"
+                                onClick={() => handleAddPointToInvoice(inv.id)}
+                                className="text-emerald-400 hover:text-emerald-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" /> Tambah Point Rincian
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={handleAddInvoice}
+                        className="px-3 py-1.5 rounded-lg bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Tambah Lembar Invoice Baru</span>
+                      </button>
+
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-medium">Total Pokok DPP Seluruh Invoice:</span>
+                        <span className="text-sm font-extrabold font-mono text-emerald-400">
+                          {formatRupiah(calculatedInvoicesTotal)}
+                        </span>
                       </div>
-                      <div className="w-full sm:w-44">
-                        <input
-                          type="number"
-                          placeholder="Nominal Pokok (Rp)"
-                          value={item.amount || ''}
-                          onChange={(e) => handleUpdateBillingPoint(item.id, 'amount', Number(e.target.value))}
-                          className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-emerald-500"
-                          required
-                        />
-                      </div>
-                      {billingPoints.length > 1 && (
+                    </div>
+                  </div>
+                ) : (
+                  /* Single Invoice Multi-Point Breakdown */
+                  <div className="space-y-2.5">
+                    <p className="text-[11px] text-emerald-300/90 bg-emerald-950/30 p-2 rounded-lg border border-emerald-800/40">
+                      ⚡ <strong>Rincian Point Tagihan:</strong> Masukkan item / point-point tagihan pokok (DPP). Sistem akan menjumlahkannya dan menambahkan PPN 11% secara otomatis.
+                    </p>
+
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {billingPoints.map((item, idx) => (
+                        <div key={item.id} className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-slate-800 font-bold text-[10px] text-slate-300 flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              placeholder="Deskripsi Point (e.g. Ground Handling / Cargo Storage / Service)"
+                              value={item.description}
+                              onChange={(e) => handleUpdateBillingPoint(item.id, 'description', e.target.value)}
+                              className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-xs focus:border-emerald-500"
+                              required
+                            />
+                          </div>
+                          <div className="w-full sm:w-44">
+                            <input
+                              type="number"
+                              placeholder="Nominal Pokok (Rp)"
+                              value={item.amount || ''}
+                              onChange={(e) => handleUpdateBillingPoint(item.id, 'amount', Number(e.target.value))}
+                              className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:border-emerald-500"
+                              required
+                            />
+                          </div>
+                          {billingPoints.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBillingPoint(item.id)}
+                              className="p-2 rounded bg-rose-950/40 text-rose-400 hover:bg-rose-900 hover:text-white border border-rose-800/40 text-xs transition cursor-pointer self-end sm:self-auto"
+                              title="Hapus point ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => handleRemoveBillingPoint(item.id)}
-                          className="p-2 rounded bg-rose-950/40 text-rose-400 hover:bg-rose-900 hover:text-white border border-rose-800/40 text-xs transition cursor-pointer self-end sm:self-auto"
-                          title="Hapus point ini"
+                          onClick={handleAddBillingPoint}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>+ Tambah Point Tagihan</span>
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => setUseMultiInvoice(true)}
+                          className="px-2.5 py-1.5 rounded-lg bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <span>📄 Beralih ke Multi-Invoice</span>
+                        </button>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-medium">Subtotal Pokok DPP:</span>
+                        <span className="text-sm font-extrabold font-mono text-emerald-400">
+                          {formatRupiah(calculatedPointsDpp)}
+                        </span>
+                      </div>
                     </div>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={handleAddBillingPoint}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                    <span>+ Tambah Point Tagihan</span>
-                  </button>
-
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block font-medium">Subtotal Pokok DPP:</span>
-                    <span className="text-sm font-extrabold font-mono text-emerald-400">
-                      {formatRupiah(calculatedPointsDpp)}
-                    </span>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
