@@ -4,7 +4,7 @@ import { X, PlusCircle, Layers, RefreshCw, FileSpreadsheet, Upload, Check, Build
 import { generateOfficialIRFNumber, buildDefaultIRFData } from '../utils/irfHelper';
 import { parseExcelForIRF } from '../utils/excelHelper';
 import { formatRupiah } from '../utils/export';
-import { calculateTaxAndNet, getTaxRate } from '../utils/taxHelper';
+import { calculateTaxAndNet, getTaxRate, calculateInvoiceTax, calculateRecordFromInvoices, getTaxLabel } from '../utils/taxHelper';
 
 interface NewRecordModalProps {
   isOpen: boolean;
@@ -42,15 +42,29 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
   // Multi-Invoice State in 1 Billing Period
   const [useMultiInvoice, setUseMultiInvoice] = useState(false);
   const [invoices, setInvoices] = useState<VendorInvoiceItem[]>([
-    { id: '1', invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: 'Invoice Vendor #1' },
-    { id: '2', invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: 'Invoice Vendor #2' },
+    { id: '1', invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: 'Invoice Vendor #1', taxType: 'JASA', includePpn: true, adjustment: 0, adjustmentReason: '' },
+    { id: '2', invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: 'Invoice Vendor #2', taxType: 'JASA', includePpn: true, adjustment: 0, adjustmentReason: '' },
   ]);
+
+  // Adjustment (+-) State for Single-Invoice Mode
+  const [adjustment, setAdjustment] = useState<number>(0);
+  const [adjustmentReason, setAdjustmentReason] = useState<string>('');
 
   const handleAddInvoice = () => {
     const nextId = String(Date.now());
     setInvoices(prev => [
       ...prev,
-      { id: nextId, invoiceNumber: '', invoiceDate: new Date().toISOString().slice(0, 10), amount: 0, description: `Invoice Vendor #${prev.length + 1}` }
+      { 
+        id: nextId, 
+        invoiceNumber: '', 
+        invoiceDate: new Date().toISOString().slice(0, 10), 
+        amount: 0, 
+        description: `Invoice Vendor #${prev.length + 1}`,
+        taxType: 'JASA',
+        includePpn: true,
+        adjustment: 0,
+        adjustmentReason: '',
+      }
     ]);
   };
 
@@ -69,6 +83,14 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       }
       return inv;
     }));
+  };
+
+  const handleApplyTaxToAllInvoices = (newTaxType: TaxType, newIncludePpn?: boolean) => {
+    setInvoices(prev => prev.map(inv => ({
+      ...inv,
+      taxType: newTaxType,
+      includePpn: newIncludePpn !== undefined ? newIncludePpn : (inv.includePpn !== undefined ? inv.includePpn : true)
+    })));
   };
 
   const handleAddPointToInvoice = (invoiceId: string) => {
@@ -124,7 +146,8 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
     }));
   };
 
-  const calculatedInvoicesTotal = invoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+  const calculatedInvoicesSummary = calculateRecordFromInvoices(invoices);
+  const calculatedInvoicesTotal = calculatedInvoicesSummary.totalDpp;
 
   // Tax & PPN State
   const [taxType, setTaxType] = useState<TaxType>('JASA');
@@ -280,18 +303,52 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
     
     // Determine DPP (Dasar Pengenaan Pajak / Pokok dari point-point atau subtotal)
     let finalDpp = 0;
-    if (useMultiInvoice && calculatedInvoicesTotal > 0) {
-      finalDpp = calculatedInvoicesTotal;
-    } else if (useBillingPoints) {
-      finalDpp = calculatedPointsDpp;
-    } else if (useMultiPeriode) {
-      finalDpp = calculatedTotalNominal;
-    } else {
-      finalDpp = Number(nominal) || 0;
-    }
+    let finalPpn = 0;
+    let finalNominal = 0;
+    let finalDeduction = 0;
+    let finalNetPaymentHo = 0;
+    let finalTaxType = taxType;
+    let finalPpnRate = includePpn ? 11 : 0;
+    let finalTaxRate = getTaxRate(taxType);
+    let validInvoicesWithTax: VendorInvoiceItem[] | undefined = undefined;
 
-    const taxCalc = calculateTaxAndNet(finalDpp, taxType, includePpn, false);
-    const finalNominal = taxCalc.grossAmount; // Total Tagihan (DPP + PPN 11%)
+    let finalAdjustment = 0;
+    let finalAdjustmentReason = adjustmentReason || undefined;
+
+    if (useMultiInvoice && invoices && invoices.length > 0) {
+      const validInvoices = invoices.filter(inv => inv.invoiceNumber.trim() || (inv.amount || 0) > 0 || (inv.billingPoints && inv.billingPoints.length > 0));
+      const targetInvoices = validInvoices.length > 0 ? validInvoices : invoices;
+      const invAgg = calculateRecordFromInvoices(targetInvoices);
+      
+      finalDpp = invAgg.totalDpp;
+      finalPpn = invAgg.totalPpn;
+      finalAdjustment = invAgg.totalAdjustment;
+      finalNominal = invAgg.totalGross;
+      finalDeduction = invAgg.totalDeduction;
+      finalNetPaymentHo = invAgg.totalNetPaymentHo;
+      finalTaxType = targetInvoices[0]?.taxType || taxType;
+      finalTaxRate = getTaxRate(finalTaxType);
+      finalPpnRate = targetInvoices.some(i => i.includePpn !== false) ? 11 : 0;
+      validInvoicesWithTax = invAgg.invoices;
+    } else {
+      if (useBillingPoints) {
+        finalDpp = calculatedPointsDpp;
+      } else if (useMultiPeriode) {
+        finalDpp = calculatedTotalNominal;
+      } else {
+        finalDpp = Number(nominal) || 0;
+      }
+      finalAdjustment = Number(adjustment) || 0;
+      const taxCalc = calculateTaxAndNet(finalDpp, taxType, includePpn, false, finalAdjustment);
+      finalDpp = taxCalc.dppAmount;
+      finalPpn = taxCalc.ppnNominal;
+      finalNominal = taxCalc.grossAmount;
+      finalDeduction = taxCalc.deduction;
+      finalNetPaymentHo = taxCalc.netPaymentHo;
+      finalTaxType = taxType;
+      finalPpnRate = taxCalc.ppnRate;
+      finalTaxRate = taxCalc.rate;
+    }
 
     if (category === 'OPERASIONAL') {
       const id = `REC-OP-2026-${Math.floor(100 + Math.random() * 900)}`;
@@ -303,15 +360,17 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
         airline,
         vendor: selectedVendor,
         periode: finalPeriode,
-        dppAmount: taxCalc.dppAmount,
-        includePpn: taxCalc.includePpn,
-        ppnRate: taxCalc.ppnRate,
-        ppnNominal: taxCalc.ppnNominal,
+        dppAmount: finalDpp,
+        includePpn: finalPpnRate > 0,
+        ppnRate: finalPpnRate,
+        ppnNominal: finalPpn,
+        adjustment: finalAdjustment,
+        adjustmentReason: finalAdjustmentReason,
         nominal: finalNominal,
-        taxType,
-        taxRate: taxCalc.rate,
-        deductionNominal: taxCalc.deduction,
-        netPaymentHo: taxCalc.netPaymentHo,
+        taxType: finalTaxType,
+        taxRate: finalTaxRate,
+        deductionNominal: finalDeduction,
+        netPaymentHo: finalNetPaymentHo,
         createdAt: new Date().toISOString().slice(0, 10),
         updatedAt: new Date().toISOString().slice(0, 10),
         overallStatus: 'In Progress',
@@ -331,12 +390,9 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       if (useBillingPoints && billingPoints && billingPoints.length > 0) {
         newRec.billingPoints = billingPoints;
       }
-      if (useMultiInvoice && invoices && invoices.length > 0) {
-        const validInvoices = invoices.filter(inv => inv.invoiceNumber.trim());
-        if (validInvoices.length > 0) {
-          newRec.invoices = validInvoices;
-          newRec.noInvoice = validInvoices.map(i => i.invoiceNumber).join(', ');
-        }
+      if (useMultiInvoice && validInvoicesWithTax && validInvoicesWithTax.length > 0) {
+        newRec.invoices = validInvoicesWithTax;
+        newRec.noInvoice = validInvoicesWithTax.map(i => i.invoiceNumber).filter(Boolean).join(', ');
       } else if (noInvoice && noInvoice.trim()) {
         newRec.noInvoice = noInvoice.trim();
       }
@@ -362,15 +418,17 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
         airline,
         vendor: selectedVendor,
         periode: finalPeriode,
-        dppAmount: taxCalc.dppAmount,
-        includePpn: taxCalc.includePpn,
-        ppnRate: taxCalc.ppnRate,
-        ppnNominal: taxCalc.ppnNominal,
+        dppAmount: finalDpp,
+        includePpn: finalPpnRate > 0,
+        ppnRate: finalPpnRate,
+        ppnNominal: finalPpn,
+        adjustment: finalAdjustment,
+        adjustmentReason: finalAdjustmentReason,
         nominal: finalNominal,
-        taxType,
-        taxRate: taxCalc.rate,
-        deductionNominal: taxCalc.deduction,
-        netPaymentHo: taxCalc.netPaymentHo,
+        taxType: finalTaxType,
+        taxRate: finalTaxRate,
+        deductionNominal: finalDeduction,
+        netPaymentHo: finalNetPaymentHo,
         noIrf: finalIrfNo,
         createdAt: new Date().toISOString().slice(0, 10),
         updatedAt: new Date().toISOString().slice(0, 10),
@@ -384,12 +442,9 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
       if (useBillingPoints && billingPoints && billingPoints.length > 0) {
         newRec.billingPoints = billingPoints;
       }
-      if (useMultiInvoice && invoices && invoices.length > 0) {
-        const validInvoices = invoices.filter(inv => inv.invoiceNumber.trim());
-        if (validInvoices.length > 0) {
-          newRec.invoices = validInvoices;
-          newRec.noInvoice = validInvoices.map(i => i.invoiceNumber).join(', ');
-        }
+      if (useMultiInvoice && validInvoicesWithTax && validInvoicesWithTax.length > 0) {
+        newRec.invoices = validInvoicesWithTax;
+        newRec.noInvoice = validInvoicesWithTax.map(i => i.invoiceNumber).filter(Boolean).join(', ');
       } else if (noInvoice && noInvoice.trim()) {
         newRec.noInvoice = noInvoice.trim();
       }
@@ -748,135 +803,301 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
                   </button>
                 </div>
 
-                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                  {invoices.map((inv, idx) => (
-                    <div key={inv.id} className="p-2.5 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-blue-900 text-blue-200 flex items-center justify-center text-[10px] font-mono">
-                            {idx + 1}
-                          </span>
-                          <span className="text-white text-xs">Invoice #{idx + 1}</span>
-                          {inv.invoiceNumber && (
-                            <span className="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300 font-mono text-[10px]">
-                              {inv.invoiceNumber}
-                            </span>
-                          )}
-                        </span>
-                        {invoices.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveInvoice(inv.id)}
-                            className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-0.5 cursor-pointer px-1.5 py-0.5 rounded bg-rose-950/30 border border-rose-900/40"
-                          >
-                            <Trash2 className="w-3 h-3" /> Hapus Invoice
-                          </button>
-                        )}
-                      </div>
+                <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                  {invoices.map((inv, idx) => {
+                    const invCalc = calculateInvoiceTax(inv);
+                    const currentTaxType = inv.taxType || 'JASA';
+                    const currentIncludePpn = inv.includePpn !== false;
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-xs">
+                    return (
+                      <div key={inv.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-blue-900 text-blue-200 flex items-center justify-center text-[10px] font-mono">
+                              {idx + 1}
+                            </span>
+                            <span className="text-white text-xs">Invoice #{idx + 1}</span>
+                            {inv.invoiceNumber && (
+                              <span className="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300 font-mono text-[10px]">
+                                {inv.invoiceNumber}
+                              </span>
+                            )}
+                          </span>
+                          {invoices.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveInvoice(inv.id)}
+                              className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-0.5 cursor-pointer px-1.5 py-0.5 rounded bg-rose-950/30 border border-rose-900/40"
+                            >
+                              <Trash2 className="w-3 h-3" /> Hapus Invoice
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">No. Invoice</label>
+                            <input
+                              type="text"
+                              placeholder="INV/VDR/2026/08/101"
+                              value={inv.invoiceNumber}
+                              onChange={(e) => handleUpdateInvoice(inv.id, 'invoiceNumber', e.target.value)}
+                              className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:border-blue-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">Tanggal Invoice</label>
+                            <input
+                              type="date"
+                              value={inv.invoiceDate || ''}
+                              onChange={(e) => handleUpdateInvoice(inv.id, 'invoiceDate', e.target.value)}
+                              className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:border-blue-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">
+                              Subtotal DPP Invoice (Rp)
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={inv.amount || ''}
+                              onChange={(e) => handleUpdateInvoice(inv.id, 'amount', Number(e.target.value))}
+                              className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-emerald-400 font-mono text-[11px] font-bold focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
                         <div>
-                          <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">No. Invoice</label>
                           <input
                             type="text"
-                            placeholder="INV/VDR/2026/08/101"
-                            value={inv.invoiceNumber}
-                            onChange={(e) => handleUpdateInvoice(inv.id, 'invoiceNumber', e.target.value)}
-                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:border-blue-500"
+                            placeholder="Uraian / Deskripsi Invoice (opsional, e.g. Jasa Ground Handling Flight JT-902)"
+                            value={inv.description || ''}
+                            onChange={(e) => handleUpdateInvoice(inv.id, 'description', e.target.value)}
+                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 text-[11px] focus:border-blue-500"
                           />
                         </div>
 
-                        <div>
-                          <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">Tanggal Invoice</label>
-                          <input
-                            type="date"
-                            value={inv.invoiceDate || ''}
-                            onChange={(e) => handleUpdateInvoice(inv.id, 'invoiceDate', e.target.value)}
-                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:border-blue-500"
-                          />
-                        </div>
+                        {/* Pengaturan Pajak & PPh Spesifik untuk Invoice Ini */}
+                        <div className="p-2 bg-slate-950/70 rounded-lg border border-slate-800 space-y-1.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                            <span className="text-[10px] font-semibold text-slate-300 flex items-center gap-1">
+                              <span>⚙️ Potongan Pajak & PPN Invoice Ini:</span>
+                            </span>
 
-                        <div>
-                          <label className="block text-[9px] text-slate-400 mb-0.5 font-medium">
-                            Subtotal DPP Invoice (Rp)
-                          </label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={inv.amount || ''}
-                            onChange={(e) => handleUpdateInvoice(inv.id, 'amount', Number(e.target.value))}
-                            className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-emerald-400 font-mono text-[11px] font-bold focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <input
-                          type="text"
-                          placeholder="Uraian / Deskripsi Invoice (opsional, e.g. Jasa Ground Handling Flight JT-902)"
-                          value={inv.description || ''}
-                          onChange={(e) => handleUpdateInvoice(inv.id, 'description', e.target.value)}
-                          className="w-full p-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 text-[11px] focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* Rincian Point Tagihan didalam Invoice Ini */}
-                      <div className="pt-1.5 border-t border-slate-800/80 space-y-1.5 bg-slate-950/60 p-2 rounded-lg">
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                            <span>📌 Rincian Point Tagihan ({inv.billingPoints?.length || 0} Point)</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleAddPointToInvoice(inv.id)}
-                            className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[9px] font-bold flex items-center gap-1 cursor-pointer"
-                          >
-                            <Plus className="w-2.5 h-2.5" />
-                            <span>+ Tambah Point</span>
-                          </button>
-                        </div>
-
-                        {inv.billingPoints && inv.billingPoints.length > 0 && (
-                          <div className="space-y-1">
-                            {inv.billingPoints.map((pt, pIdx) => (
-                              <div key={pt.id} className="flex items-center gap-1.5 text-xs">
-                                <span className="w-4 h-4 rounded bg-slate-800 text-slate-400 font-mono text-[9px] flex items-center justify-center shrink-0">
-                                  {pIdx + 1}
-                                </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <label className="flex items-center gap-1 cursor-pointer bg-slate-900 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
                                 <input
-                                  type="text"
-                                  placeholder="Deskripsi Point (e.g. Ground Handling, Ramp, Service)"
-                                  value={pt.description}
-                                  onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'description', e.target.value)}
-                                  className="flex-1 p-1 bg-slate-900 border border-slate-700 rounded text-white text-[10px] focus:border-emerald-500"
+                                  type="checkbox"
+                                  checked={currentIncludePpn}
+                                  onChange={(e) => handleUpdateInvoice(inv.id, 'includePpn', e.target.checked)}
+                                  className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
                                 />
+                                <span className="text-emerald-300 font-semibold">PPN 11%</span>
+                              </label>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateInvoice(inv.id, 'taxType', 'JASA')}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                  currentTaxType === 'JASA'
+                                    ? 'bg-blue-900 text-blue-100 border border-blue-400'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                Jasa (-2%)
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateInvoice(inv.id, 'taxType', 'BUKAN_JASA')}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                  currentTaxType === 'BUKAN_JASA'
+                                    ? 'bg-amber-900 text-amber-100 border border-amber-400'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                Bukan Jasa (-10%)
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateInvoice(inv.id, 'taxType', 'BEBAS_POTONGAN')}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                  currentTaxType === 'BEBAS_POTONGAN'
+                                    ? 'bg-slate-700 text-slate-100 border border-slate-400'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                0% (Bebas)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Penyesuaian / Selisih Pembulatan (+-) untuk invoice ini */}
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-bold text-amber-300 flex items-center gap-1">
+                                <Calculator className="w-3 h-3 text-amber-400" />
+                                <span>Penyesuaian / Pembulatan (+- Rp):</span>
+                              </label>
+                              <span className="text-[9px] text-slate-400">
+                                Selaraskan hasil tagihan agar pas dengan cetakan invoice fisik
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Direct number input with +/- */}
+                              <div className="flex items-center gap-1 flex-1 min-w-[150px]">
                                 <input
                                   type="number"
-                                  placeholder="DPP (Rp)"
-                                  value={pt.amount || ''}
-                                  onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'amount', Number(e.target.value))}
-                                  className="w-28 sm:w-36 p-1 bg-slate-900 border border-slate-700 rounded text-emerald-400 font-mono text-[10px] font-bold focus:border-emerald-500"
+                                  step="1"
+                                  placeholder="0 (e.g. +50 atau -25)"
+                                  value={inv.adjustment !== undefined && inv.adjustment !== 0 ? inv.adjustment : ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                    handleUpdateInvoice(inv.id, 'adjustment', val);
+                                  }}
+                                  className={`w-full p-1 bg-slate-950 border rounded text-xs font-mono font-bold focus:outline-none ${
+                                    (inv.adjustment || 0) > 0
+                                      ? 'text-emerald-400 border-emerald-500/60'
+                                      : (inv.adjustment || 0) < 0
+                                      ? 'text-rose-400 border-rose-500/60'
+                                      : 'text-slate-300 border-slate-700'
+                                  }`}
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemovePointFromInvoice(inv.id, pt.id)}
-                                  className="p-1 text-rose-400 hover:text-rose-300 cursor-pointer"
-                                  title="Hapus Point Ini"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
+                                {(inv.adjustment || 0) !== 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateInvoice(inv.id, 'adjustment', 0)}
+                                    className="px-1.5 py-1 text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer whitespace-nowrap"
+                                    title="Reset ke 0"
+                                  >
+                                    Reset
+                                  </button>
+                                )}
                               </div>
-                            ))}
+
+                              {/* Quick shortcut adjustment buttons */}
+                              <div className="flex items-center gap-1">
+                                {[-100, -10, -1, 1, 10, 100].map((step) => (
+                                  <button
+                                    key={step}
+                                    type="button"
+                                    onClick={() => {
+                                      const current = Number(inv.adjustment) || 0;
+                                      handleUpdateInvoice(inv.id, 'adjustment', current + step);
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold cursor-pointer transition ${
+                                      step > 0
+                                        ? 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-800/60'
+                                        : 'bg-rose-950/80 text-rose-300 hover:bg-rose-900 border border-rose-800/60'
+                                    }`}
+                                    title={`Tambah/Kurang ${step > 0 ? `+${step}` : step} Rp`}
+                                  >
+                                    {step > 0 ? `+${step}` : step}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Optional reason / note */}
+                            <input
+                              type="text"
+                              placeholder="Keterangan penyesuaian (e.g. Pembulatan invoice vendor / Selisih PPN)"
+                              value={inv.adjustmentReason || ''}
+                              onChange={(e) => handleUpdateInvoice(inv.id, 'adjustmentReason', e.target.value)}
+                              className="w-full p-1 bg-slate-950 border border-slate-800 rounded text-[10px] text-slate-300 placeholder-slate-600 focus:border-amber-500"
+                            />
                           </div>
-                        )}
+
+                          {/* Mini Breakdown Badge per Invoice */}
+                          <div className="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-slate-800/80 text-[10px] font-mono">
+                            <span className="text-slate-400">
+                              DPP: <strong className="text-slate-200">{formatRupiah(invCalc.dppAmount)}</strong>
+                            </span>
+                            <span className="text-emerald-400">
+                              PPN: {invCalc.includePpn ? `+${formatRupiah(invCalc.ppnNominal)}` : 'Rp 0'}
+                            </span>
+                            {(invCalc.adjustment || 0) !== 0 && (
+                              <span className={(invCalc.adjustment || 0) > 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                                Adj: {(invCalc.adjustment || 0) > 0 ? `+${formatRupiah(invCalc.adjustment)}` : `-${formatRupiah(Math.abs(invCalc.adjustment))}`}
+                              </span>
+                            )}
+                            <span className="text-amber-300">
+                              Tagihan: {formatRupiah(invCalc.grossAmount)}
+                            </span>
+                            <span className="text-rose-400">
+                              PPh ({invCalc.rate}%): -{formatRupiah(invCalc.deduction)}
+                            </span>
+                            <span className="text-emerald-300 font-bold bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                              Netto HO: {formatRupiah(invCalc.netPaymentHo)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Rincian Point Tagihan didalam Invoice Ini */}
+                        <div className="pt-1.5 border-t border-slate-800/80 space-y-1.5 bg-slate-950/60 p-2 rounded-lg">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                              <span>📌 Rincian Point Tagihan ({inv.billingPoints?.length || 0} Point)</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleAddPointToInvoice(inv.id)}
+                              className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[9px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-2.5 h-2.5" />
+                              <span>+ Tambah Point</span>
+                            </button>
+                          </div>
+
+                          {inv.billingPoints && inv.billingPoints.length > 0 && (
+                            <div className="space-y-1">
+                              {inv.billingPoints.map((pt, pIdx) => (
+                                <div key={pt.id} className="flex items-center gap-1.5 text-xs">
+                                  <span className="w-4 h-4 rounded bg-slate-800 text-slate-400 font-mono text-[9px] flex items-center justify-center shrink-0">
+                                    {pIdx + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="Deskripsi Point (e.g. Ground Handling, Ramp, Service)"
+                                    value={pt.description}
+                                    onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'description', e.target.value)}
+                                    className="flex-1 p-1 bg-slate-900 border border-slate-700 rounded text-white text-[10px] focus:border-emerald-500"
+                                  />
+                                  <input
+                                    type="number"
+                                    placeholder="DPP (Rp)"
+                                    value={pt.amount || ''}
+                                    onChange={(e) => handleUpdatePointInInvoice(inv.id, pt.id, 'amount', Number(e.target.value))}
+                                    className="w-28 sm:w-36 p-1 bg-slate-900 border border-slate-700 rounded text-emerald-400 font-mono text-[10px] font-bold focus:border-emerald-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePointFromInvoice(inv.id, pt.id)}
+                                    className="p-1 text-rose-400 hover:text-rose-300 cursor-pointer"
+                                    title="Hapus Point Ini"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-1 border-t border-slate-800 text-[10px] gap-2">
                   <span className="text-slate-400">
-                    Total Seluruh Invoice ({invoices.length}): <strong className="font-mono text-emerald-400">{formatRupiah(calculatedInvoicesTotal)}</strong>
+                    Total DPP ({invoices.length} Invoice): <strong className="font-mono text-emerald-400">{formatRupiah(calculatedInvoicesTotal)}</strong>
+                    {' • '}
+                    Total Netto HO: <strong className="font-mono text-emerald-300">{formatRupiah(calculatedInvoicesSummary.totalNetPaymentHo)}</strong>
                   </span>
                   {calculatedInvoicesTotal > 0 && (
                     <button
@@ -1276,140 +1497,331 @@ export const NewRecordModal: React.FC<NewRecordModalProps> = ({
 
           {/* PPN 11% & Jenis Potongan PPh HO Section */}
           <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-              <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
-                <Percent className="w-4 h-4 text-emerald-400" />
-                <span>Pengenaan PPN 11% & Potongan Pajak PPh (Patokan HO)</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={includePpn}
-                    onChange={(e) => setIncludePpn(e.target.checked)}
-                    className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
-                  />
-                  <span className="text-emerald-300 font-semibold text-[11px]">PPN 11%</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Tax Type Options */}
-            <div>
-              <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
-                Pilih Tarif Potongan PPh (Dikenakan dari Dasar Pengenaan Pajak / DPP):
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTaxType('JASA')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                    taxType === 'JASA'
-                      ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-blue-300">Jasa</span>
-                    <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
-                      -2% (PPh 23)
-                    </span>
+            {useMultiInvoice ? (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80 gap-2">
+                  <div>
+                    <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                      <Percent className="w-4 h-4 text-emerald-400" />
+                      <span>Rekapitulasi Pajak & Potongan PPh ({invoices.length} Lembar Invoice)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Setiap invoice memiliki potongan PPh & PPN tersendiri sesuai tagihannya.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Tagihan jasa operasional & kargo dipotong 2%
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTaxType('BUKAN_JASA')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                    taxType === 'BUKAN_JASA'
-                      ? 'bg-amber-950/60 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/50'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-amber-300">Bukan Jasa</span>
-                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                      -10% (Sewa/Non-Jasa)
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Sewa alat/gedung/non-jasa dipotong 10%
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTaxType('BEBAS_POTONGAN')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                    taxType === 'BEBAS_POTONGAN'
-                      ? 'bg-slate-800 border-slate-500 text-white shadow-sm ring-1 ring-slate-400/50'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-slate-300">Tanpa Potongan</span>
-                    <span className="px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 border border-slate-600 text-[10px] font-bold">
-                      0%
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Pembayaran utuh 100% tanpa potongan PPh
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            {/* Live Calculation Display Box */}
-            {(() => {
-              let currentDpp = 0;
-              if (useBillingPoints) currentDpp = calculatedPointsDpp;
-              else if (useMultiPeriode) currentDpp = calculatedTotalNominal;
-              else currentDpp = Number(nominal) || 0;
-
-              const calc = calculateTaxAndNet(currentDpp, taxType, includePpn, false);
-              return (
-                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
-                    <span className="text-slate-400">1. Dasar Pengenaan Pajak / DPP (Pokok Point):</span>
-                    <span className="font-bold font-mono text-white">{formatRupiah(calc.dppAmount)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
-                    <span className="text-slate-400 flex items-center gap-1">
-                      <span>2. PPN ({calc.ppnRate}%):</span>
-                      <span className="text-[10px] text-emerald-400 font-mono">
-                        {calc.includePpn ? '(Dikenakan ke Tagihan)' : '(Non-PPN)'}
-                      </span>
-                    </span>
-                    <span className="font-bold font-mono text-emerald-400">+ {formatRupiah(calc.ppnNominal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80 bg-slate-950/40 p-1.5 rounded-lg">
-                    <span className="text-slate-300 font-semibold">3. Total Nilai Tagihan (Invoice / Faktur Bruto):</span>
-                    <span className="font-bold font-mono text-amber-300">{formatRupiah(calc.grossAmount)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
-                    <span className="text-slate-400 flex items-center gap-1">
-                      <span>4. Potongan PPh ({calc.rate}% dari DPP):</span>
-                      <span className="text-[10px] text-rose-400/80 font-mono">
-                        ({taxType === 'JASA' ? 'PPh 23 Jasa 2%' : taxType === 'BUKAN_JASA' ? 'PPh 10%' : '0%'})
-                      </span>
-                    </span>
-                    <span className="font-bold font-mono text-rose-400">- {formatRupiah(calc.deduction)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs pt-1 bg-emerald-950/30 p-2 rounded-xl border border-emerald-800/40">
-                    <div>
-                      <span className="text-emerald-300 font-bold block text-xs">5. Total Patokan Pembayaran dari HO (Netto):</span>
-                      <span className="text-[10px] text-slate-400">Total Tagihan setelah PPN 11% & potongan PPh yang ditransfer HO</span>
-                    </div>
-                    <span className="font-extrabold font-mono text-base text-emerald-400">
-                      {formatRupiah(calc.netPaymentHo)}
-                    </span>
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <span className="text-slate-400 font-medium mr-1">Set Semua:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyTaxToAllInvoices('JASA', true)}
+                      className="px-2 py-1 rounded bg-blue-950 text-blue-300 hover:bg-blue-900 border border-blue-800 text-[10px] font-bold cursor-pointer transition"
+                      title="Ubah semua invoice jadi Jasa (-2%) & PPN 11%"
+                    >
+                      Semua Jasa (-2%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyTaxToAllInvoices('BUKAN_JASA', true)}
+                      className="px-2 py-1 rounded bg-amber-950 text-amber-300 hover:bg-amber-900 border border-amber-800 text-[10px] font-bold cursor-pointer transition"
+                      title="Ubah semua invoice jadi Bukan Jasa (-10%) & PPN 11%"
+                    >
+                      Semua Non-Jasa (-10%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyTaxToAllInvoices('BEBAS_POTONGAN', false)}
+                      className="px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-600 text-[10px] font-bold cursor-pointer transition"
+                      title="Ubah semua invoice jadi Tanpa Potongan (0%)"
+                    >
+                      Semua 0%
+                    </button>
                   </div>
                 </div>
-              );
-            })()}
+
+                {/* Multi-Invoice Live Calculation Display Box */}
+                {(() => {
+                  const summary = calculateRecordFromInvoices(invoices);
+                  return (
+                    <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400">1. Total Pokok DPP Seluruh Invoice:</span>
+                        <span className="font-bold font-mono text-white">{formatRupiah(summary.totalDpp)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <span>2. Total PPN (11%):</span>
+                          <span className="text-[10px] text-emerald-400 font-mono">
+                            (Akumulasi dari {invoices.filter(i => i.includePpn !== false).length} invoice ber-PPN)
+                          </span>
+                        </span>
+                        <span className="font-bold font-mono text-emerald-400">+ {formatRupiah(summary.totalPpn)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <span>3. Total Penyesuaian (+-):</span>
+                          <span className="text-[10px] text-slate-500 font-normal">
+                            (Selisih pembulatan invoice)
+                          </span>
+                        </span>
+                        <span className={`font-bold font-mono ${summary.totalAdjustment > 0 ? 'text-emerald-400' : summary.totalAdjustment < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                          {summary.totalAdjustment > 0 ? `+ ${formatRupiah(summary.totalAdjustment)}` : summary.totalAdjustment < 0 ? `- ${formatRupiah(Math.abs(summary.totalAdjustment))}` : 'Rp 0'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80 bg-slate-950/40 p-1.5 rounded-lg">
+                        <div>
+                          <span className="text-slate-300 font-semibold block">4. Total Nilai Tagihan (Invoice / Faktur Bruto):</span>
+                          <span className="text-[9px] text-slate-400 font-mono">DPP + PPN 11% {summary.totalAdjustment !== 0 ? (summary.totalAdjustment > 0 ? `+ ${formatRupiah(summary.totalAdjustment)}` : `- ${formatRupiah(Math.abs(summary.totalAdjustment))}`) : ''}</span>
+                        </div>
+                        <span className="font-bold font-mono text-amber-300">{formatRupiah(summary.totalGross)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <span>5. Total Potongan PPh (Akumulasi per Invoice):</span>
+                          <span className="text-[10px] text-rose-400/80 font-mono">
+                            (Sesuai tarif masing-masing invoice)
+                          </span>
+                        </span>
+                        <span className="font-bold font-mono text-rose-400">- {formatRupiah(summary.totalDeduction)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1 bg-emerald-950/30 p-2 rounded-xl border border-emerald-800/40">
+                        <div>
+                          <span className="text-emerald-300 font-bold block text-xs">6. Total Patokan Pembayaran dari HO (Netto):</span>
+                          <span className="text-[10px] text-slate-400">Total akumulasi netto yang akan ditransfer HO</span>
+                        </div>
+                        <span className="font-extrabold font-mono text-base text-emerald-400">
+                          {formatRupiah(summary.totalNetPaymentHo)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                  <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                    <Percent className="w-4 h-4 text-emerald-400" />
+                    <span>Pengenaan PPN 11% & Potongan Pajak PPh (Patokan HO)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={includePpn}
+                        onChange={(e) => setIncludePpn(e.target.checked)}
+                        className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
+                      />
+                      <span className="text-emerald-300 font-semibold text-[11px]">PPN 11%</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Tax Type Options */}
+                <div>
+                  <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
+                    Pilih Tarif Potongan PPh (Dikenakan dari Dasar Pengenaan Pajak / DPP):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTaxType('JASA')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        taxType === 'JASA'
+                          ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-blue-300">Jasa</span>
+                        <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
+                          -2% (PPh 23)
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Tagihan jasa operasional & kargo dipotong 2%
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTaxType('BUKAN_JASA')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        taxType === 'BUKAN_JASA'
+                          ? 'bg-amber-950/60 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/50'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-amber-300">Bukan Jasa</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                          -10% (Sewa/Non-Jasa)
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Sewa alat/gedung/non-jasa dipotong 10%
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTaxType('BEBAS_POTONGAN')}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        taxType === 'BEBAS_POTONGAN'
+                          ? 'bg-slate-800 border-slate-500 text-white shadow-sm ring-1 ring-slate-400/50'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-300">Tanpa Potongan</span>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300 border border-slate-600 text-[10px] font-bold">
+                          0%
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Pembayaran utuh 100% tanpa potongan PPh
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Penyesuaian / Pembulatan (+-) Tagihan */}
+                <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Penyesuaian / Selisih Pembulatan Tagihan (+- Rp):</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Selaraskan hasil tagihan agar sesuai dengan invoice fisik vendor
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Direct input */}
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[170px]">
+                      <input
+                        type="number"
+                        step="1"
+                        placeholder="0 (e.g. +50 atau -25)"
+                        value={adjustment !== 0 ? adjustment : ''}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : Number(e.target.value);
+                          setAdjustment(val);
+                        }}
+                        className={`w-full p-1.5 bg-slate-950 border rounded-lg text-xs font-mono font-bold focus:outline-none ${
+                          adjustment > 0
+                            ? 'text-emerald-400 border-emerald-500/60'
+                            : adjustment < 0
+                            ? 'text-rose-400 border-rose-500/60'
+                            : 'text-slate-200 border-slate-700'
+                        }`}
+                      />
+                      {adjustment !== 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAdjustment(0)}
+                          className="px-2 py-1.5 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer whitespace-nowrap"
+                          title="Reset penyesuaian ke 0"
+                        >
+                          Reset 0
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Quick shortcut adjustment buttons */}
+                    <div className="flex items-center gap-1">
+                      {[-100, -10, -1, 1, 10, 100].map((step) => (
+                        <button
+                          key={step}
+                          type="button"
+                          onClick={() => setAdjustment(prev => prev + step)}
+                          className={`px-2 py-1 rounded text-[10px] font-mono font-bold cursor-pointer transition ${
+                            step > 0
+                              ? 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-800/60'
+                              : 'bg-rose-950/80 text-rose-300 hover:bg-rose-900 border border-rose-800/60'
+                          }`}
+                          title={`Tambah/Kurang ${step > 0 ? `+${step}` : step} Rp`}
+                        >
+                          {step > 0 ? `+${step}` : step}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Optional reason / note */}
+                  <input
+                    type="text"
+                    placeholder="Keterangan penyesuaian (e.g. Pembulatan vendor / Selisih PPN)"
+                    value={adjustmentReason}
+                    onChange={(e) => setAdjustmentReason(e.target.value)}
+                    className="w-full p-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 placeholder-slate-600 focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Live Calculation Display Box */}
+                {(() => {
+                  let currentDpp = 0;
+                  if (useBillingPoints) currentDpp = calculatedPointsDpp;
+                  else if (useMultiPeriode) currentDpp = calculatedTotalNominal;
+                  else currentDpp = Number(nominal) || 0;
+
+                  const calc = calculateTaxAndNet(currentDpp, taxType, includePpn, false, adjustment);
+                  return (
+                    <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400">1. Dasar Pengenaan Pajak / DPP (Pokok Point):</span>
+                        <span className="font-bold font-mono text-white">{formatRupiah(calc.dppAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <span>2. PPN ({calc.ppnRate}%):</span>
+                          <span className="text-[10px] text-emerald-400 font-mono">
+                            {calc.includePpn ? '(Dikenakan ke Tagihan)' : '(Non-PPN)'}
+                          </span>
+                        </span>
+                        <span className="font-bold font-mono text-emerald-400">+ {formatRupiah(calc.ppnNominal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <span>3. Penyesuaian (+-):</span>
+                          <span className="text-[10px] text-slate-500 font-normal">
+                            (Selisih pembulatan invoice)
+                          </span>
+                        </span>
+                        <span className={`font-bold font-mono ${adjustment > 0 ? 'text-emerald-400' : adjustment < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                          {adjustment > 0 ? `+ ${formatRupiah(adjustment)}` : adjustment < 0 ? `- ${formatRupiah(Math.abs(adjustment))}` : 'Rp 0'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80 bg-slate-950/40 p-1.5 rounded-lg">
+                        <div>
+                          <span className="text-slate-300 font-semibold block">4. Total Nilai Tagihan (Invoice / Faktur Bruto):</span>
+                          <span className="text-[9px] text-slate-400 font-mono">DPP + PPN 11% {adjustment !== 0 ? (adjustment > 0 ? `+ ${formatRupiah(adjustment)}` : `- ${formatRupiah(Math.abs(adjustment))}`) : ''}</span>
+                        </div>
+                        <span className="font-bold font-mono text-amber-300">{formatRupiah(calc.grossAmount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800/80">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <span>5. Potongan PPh ({calc.rate}% dari DPP):</span>
+                          <span className="text-[10px] text-rose-400/80 font-mono">
+                            ({taxType === 'JASA' ? 'PPh 23 Jasa 2%' : taxType === 'BUKAN_JASA' ? 'PPh 10%' : '0%'})
+                          </span>
+                        </span>
+                        <span className="font-bold font-mono text-rose-400">- {formatRupiah(calc.deduction)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1 bg-emerald-950/30 p-2 rounded-xl border border-emerald-800/40">
+                        <div>
+                          <span className="text-emerald-300 font-bold block text-xs">6. Total Patokan Pembayaran dari HO (Netto):</span>
+                          <span className="text-[10px] text-slate-400">Total Tagihan setelah PPN 11% & potongan PPh yang ditransfer HO</span>
+                        </div>
+                        <span className="font-extrabold font-mono text-base text-emerald-400">
+                          {formatRupiah(calc.netPaymentHo)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </div>
 
           {/* Operational Specific Inputs (IOM & APGNR) */}

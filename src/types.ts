@@ -148,6 +148,14 @@ export interface VendorInvoiceItem {
   amount?: number; // Nilai nominal tagihan per invoice (IDR) - Subtotal DPP invoice
   description?: string; // Keterangan / Uraian invoice
   billingPoints?: BillingPointItem[]; // Rincian point-point tagihan pokok (DPP) dalam invoice ini
+  taxType?: TaxType; // 'JASA' (2%), 'BUKAN_JASA' (10%), 'BEBAS_POTONGAN' (0%)
+  includePpn?: boolean; // Apakah invoice ini kena PPN 11% (default: true)
+  ppnNominal?: number; // Nominal PPN 11% untuk invoice ini
+  adjustment?: number; // Penyesuaian / Pembulatan (+-) agar hasil tagihan pas dengan invoice fisik vendor
+  adjustmentReason?: string; // Alasan penyesuaian (e.g. "Pembulatan desimal", "Selisih PPN vendor", "Koreksi nilai")
+  grossAmount?: number; // Total Tagihan Invoice = DPP + PPN +/- Penyesuaian
+  deductionNominal?: number; // Potongan PPh untuk invoice ini
+  netPaymentHo?: number; // Patokan Netto Bayar HO untuk invoice ini = Gross - Potongan PPh
 }
 
 export interface BillingPointItem {
@@ -183,7 +191,9 @@ export interface BillingRecord {
   includePpn?: boolean; // Apakah dikenakan PPN 11% (true by default)
   ppnRate?: number; // 11 (%)
   ppnNominal?: number; // DPP * 11%
-  nominal: number; // Total Nominal Tagihan (Bruto = DPP + PPN 11%) in IDR
+  adjustment?: number; // Penyesuaian / pembulatan (+-) nominal tagihan agar pas dengan invoice vendor
+  adjustmentReason?: string; // Alasan penyesuaian (e.g. "Pembulatan desimal", "Selisih PPN vendor", "Koreksi nilai")
+  nominal: number; // Total Nominal Tagihan (Bruto = DPP + PPN 11% +/- Penyesuaian) in IDR
   taxType?: TaxType; // 'JASA' (potong 2%), 'BUKAN_JASA' (potong 10%), 'BEBAS_POTONGAN' (0%)
   taxRate?: number; // 2, 10, or 0 (%)
   deductionNominal?: number; // Nominal Potongan Pajak PPh (DPP * taxRate%)

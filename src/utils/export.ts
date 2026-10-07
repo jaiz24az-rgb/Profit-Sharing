@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { BillingRecord, STAGES } from '../types';
-import { getRecordNetPaymentHo, getRecordDeduction, getTaxLabel, getTaxRate } from './taxHelper';
+import { getRecordNetPaymentHo, getRecordDeduction, getTaxLabel, getTaxRate, getRecordAdjustment } from './taxHelper';
 
 export function formatRupiah(amount: number): string {
   return new Intl.NumberFormat('id-ID', {
@@ -16,6 +16,7 @@ export function exportToExcel(records: BillingRecord[], fileName = 'Checklist_Pe
     const rate = getTaxRate(taxType);
     const deduction = getRecordDeduction(rec);
     const netPaymentHo = getRecordNetPaymentHo(rec);
+    const adj = getRecordAdjustment(rec);
     const dpp = rec.dppAmount !== undefined ? rec.dppAmount : (rec.nominal || 0);
     const ppnNominal = rec.ppnNominal !== undefined ? rec.ppnNominal : (rec.includePpn !== false ? Math.round(dpp * 0.11) : 0);
 
@@ -31,6 +32,7 @@ export function exportToExcel(records: BillingRecord[], fileName = 'Checklist_Pe
       'Dasar Pengenaan Pajak / DPP (Rp)': dpp,
       'Status PPN': rec.includePpn !== false ? 'PPN 11%' : 'Non PPN',
       'Nominal PPN 11% (Rp)': ppnNominal,
+      'Penyesuaian (+-) Rp': adj,
       'Total Nilai Tagihan Bruto (Rp)': rec.nominal,
       'Tarif Potongan PPh': `${rate}%`,
       'Potongan Pajak PPh (Rp)': deduction,

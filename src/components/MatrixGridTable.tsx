@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BillingRecord, StageKey, STAGES, OPERATIONAL_STAGES, Airline, Vendor } from '../types';
 import { formatRupiah } from '../utils/export';
+import { getRecordAdjustment } from '../utils/taxHelper';
 import { 
   Check, 
   Calendar, 
@@ -311,6 +312,26 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                             +PPN 11%
                           </button>
                         )}
+                        {(() => {
+                          const adj = getRecordAdjustment(rec);
+                          if (adj !== 0) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setBreakdownRecord(rec)}
+                                className={`px-1 py-0.2 rounded text-[8px] font-mono font-bold cursor-pointer border ${
+                                  adj > 0
+                                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900'
+                                    : 'bg-rose-950/80 text-rose-300 border-rose-700/60 hover:bg-rose-900'
+                                }`}
+                                title={`Penyesuaian / pembulatan tagihan: ${adj > 0 ? `+${formatRupiah(adj)}` : `-${formatRupiah(Math.abs(adj))}`}${rec.adjustmentReason ? ` (${rec.adjustmentReason})` : ''}`}
+                              >
+                                {adj > 0 ? `+${formatRupiah(adj)}` : `-${formatRupiah(Math.abs(adj))}`}
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
                         {rec.billingPoints && rec.billingPoints.length > 0 && (
                           <button
                             type="button"
@@ -682,29 +703,50 @@ export const MatrixGridTable: React.FC<MatrixGridTableProps> = ({
                   + {formatRupiah(breakdownRecord.includePpn !== false ? (breakdownRecord.ppnNominal || (breakdownRecord.nominal - (breakdownRecord.dppAmount || Math.round(breakdownRecord.nominal / 1.11)))) : 0)}
                 </span>
               </div>
-              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80 bg-slate-900/80 p-2 rounded-lg">
-                <span className="text-amber-200 font-bold">3. Total Tagihan (Nilai Invoice Bruto):</span>
-                <span className="font-mono font-bold text-amber-300 text-sm">
-                  {formatRupiah(breakdownRecord.nominal)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
-                <span className="text-rose-400 flex items-center gap-1">
-                  <span>4. Potongan Pajak PPh:</span>
-                  <span className="text-[10px] font-bold">
-                    ({breakdownRecord.taxRate || (breakdownRecord.taxType === 'BUKAN_JASA' ? 10 : 2)}% {breakdownRecord.taxType === 'BUKAN_JASA' ? 'Sewa/Non-Jasa' : 'PPh 23 Jasa'})
-                  </span>
-                </span>
-                <span className="font-mono font-bold text-rose-400">
-                  - {formatRupiah(breakdownRecord.deductionNominal || Math.round((breakdownRecord.dppAmount || Math.round(breakdownRecord.nominal / 1.11)) * ((breakdownRecord.taxRate || (breakdownRecord.taxType === 'BUKAN_JASA' ? 10 : 2)) / 100)))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between pt-1 bg-emerald-950/40 p-2 rounded-lg border border-emerald-800/40">
-                <span className="text-emerald-300 font-bold">5. Patokan Pembayaran HO (Netto Transfer):</span>
-                <span className="font-mono font-bold text-emerald-300 text-sm">
-                  {formatRupiah(breakdownRecord.netPaymentHo || (breakdownRecord.nominal - (breakdownRecord.deductionNominal || 0)))}
-                </span>
-              </div>
+              {(() => {
+                const adj = getRecordAdjustment(breakdownRecord);
+                return (
+                  <>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <span>3. Penyesuaian / Pembulatan (+-):</span>
+                        {breakdownRecord.adjustmentReason && (
+                          <span className="text-[10px] text-slate-500">({breakdownRecord.adjustmentReason})</span>
+                        )}
+                      </span>
+                      <span className={`font-mono font-bold ${adj > 0 ? 'text-emerald-400' : adj < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                        {adj > 0 ? `+ ${formatRupiah(adj)}` : adj < 0 ? `- ${formatRupiah(Math.abs(adj))}` : 'Rp 0'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80 bg-slate-900/80 p-2 rounded-lg">
+                      <div>
+                        <span className="text-amber-200 font-bold block">4. Total Tagihan (Nilai Invoice Bruto):</span>
+                        <span className="text-[9px] text-slate-400 font-mono">DPP + PPN 11% {adj !== 0 ? (adj > 0 ? `+ ${formatRupiah(adj)}` : `- ${formatRupiah(Math.abs(adj))}`) : ''}</span>
+                      </div>
+                      <span className="font-mono font-bold text-amber-300 text-sm">
+                        {formatRupiah(breakdownRecord.nominal)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
+                      <span className="text-rose-400 flex items-center gap-1">
+                        <span>5. Potongan Pajak PPh:</span>
+                        <span className="text-[10px] font-bold">
+                          ({breakdownRecord.taxRate || (breakdownRecord.taxType === 'BUKAN_JASA' ? 10 : 2)}% {breakdownRecord.taxType === 'BUKAN_JASA' ? 'Sewa/Non-Jasa' : 'PPh 23 Jasa'})
+                        </span>
+                      </span>
+                      <span className="font-mono font-bold text-rose-400">
+                        - {formatRupiah(breakdownRecord.deductionNominal || Math.round((breakdownRecord.dppAmount || Math.round(breakdownRecord.nominal / 1.11)) * ((breakdownRecord.taxRate || (breakdownRecord.taxType === 'BUKAN_JASA' ? 10 : 2)) / 100)))}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 bg-emerald-950/40 p-2 rounded-lg border border-emerald-800/40">
+                      <span className="text-emerald-300 font-bold">6. Patokan Pembayaran HO (Netto Transfer):</span>
+                      <span className="font-mono font-bold text-emerald-300 text-sm">
+                        {formatRupiah(breakdownRecord.netPaymentHo || (breakdownRecord.nominal - (breakdownRecord.deductionNominal || 0)))}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Footer action */}

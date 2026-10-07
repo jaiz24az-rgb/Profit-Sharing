@@ -1,6 +1,7 @@
 import React from 'react';
 import { BillingRecord, STAGES, OPERATIONAL_STAGES, StageKey } from '../types';
 import { formatRupiah } from '../utils/export';
+import { getRecordAdjustment } from '../utils/taxHelper';
 import { CheckCircle2, Clock, FileText, ChevronRight, Edit3, Send, DollarSign } from 'lucide-react';
 
 interface KanbanViewProps {
@@ -106,13 +107,31 @@ export const KanbanView: React.FC<KanbanViewProps> = ({
 
                   <div className="flex justify-between items-center text-slate-300">
                     <span className="text-slate-500">Total Tagihan:</span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
                       <span className="font-bold text-amber-300 font-mono">{formatRupiah(rec.nominal)}</span>
                       {rec.includePpn !== false && (
                         <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60">
                           +PPN 11%
                         </span>
                       )}
+                      {(() => {
+                        const adj = getRecordAdjustment(rec);
+                        if (adj !== 0) {
+                          return (
+                            <span
+                              className={`px-1 py-0.2 rounded text-[8px] font-mono font-bold border ${
+                                adj > 0
+                                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
+                                  : 'bg-rose-950/80 text-rose-300 border-rose-700/60'
+                              }`}
+                              title={`Penyesuaian: ${adj > 0 ? `+${formatRupiah(adj)}` : `-${formatRupiah(Math.abs(adj))}`}`}
+                            >
+                              {adj > 0 ? `+${formatRupiah(adj)}` : `-${formatRupiah(Math.abs(adj))}`}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
 
